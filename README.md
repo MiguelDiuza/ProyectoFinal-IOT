@@ -79,6 +79,14 @@ Sketch [`esp32/prueba_ventilador`](esp32/prueba_ventilador/prueba_ventilador.ino
 de 2 s, ejecuta el modelo con `run_classifier` e imprime la clase. Si detecta `desbalanceado` u
 `obstruido` con confianza ≥ 0,60 enciende el **LED de D18** (falla del ventilador).
 
+Resultado en el ESP32 (Monitor serie) probando las cuatro clases con el ventilador: el modelo
+reconoce `apagado` con confianza 1,00 y detecta `desbalanceado` y `obstruido` (hasta 0,99) marcando
+`<<< FALLA EN VENTILADOR`. Cada predicción tarda **4 ms** de procesamiento (Spectral Analysis) y
+menos de 1 ms de red neuronal. En `normal` la confianza baja a ~0,55 porque se parece a
+`obstruido`, igual que en la matriz de confusión.
+
+![Prueba en el ESP32](docs/esp32_prueba_ventilador_serial.png)
+
 ## Conexiones
 
 | Componente | Pin del ESP32 |

@@ -1,0 +1,16 @@
+# Credenciales: NUNCA subir
+secrets.h
+*.pem
+*.key
+*.crt
+.env
+labsuser.pem
+
+# Librerías generadas por Edge Impulse (se regeneran desde el proyecto)
+*_inferencing/
+*.zip
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+.vscode/

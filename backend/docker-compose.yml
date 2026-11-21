@@ -1,0 +1,100 @@
+# Backend de la bodega de café: broker, base de datos, API de alarmas, Grafana y dashboard.
+#   cp .env.example .env   (y cambiar las claves)
+#   docker compose up -d --build
+# Puertos: 1883 MQTT (ESP32) · 8000 API · 8080 dashboard · 3000 Grafana · 8086 InfluxDB
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.20
+    restart: unless-stopped
+    ports: ["1883:1883"]
+    environment:
+      MQTT_USER_ESP32: ${MQTT_USER_ESP32}
+      MQTT_PASS_ESP32: ${MQTT_PASS_ESP32}
+      MQTT_USER_SERVICIOS: ${MQTT_USER_SERVICIOS}
+      MQTT_PASS_SERVICIOS: ${MQTT_PASS_SERVICIOS}
+    # Crea el archivo de usuarios a partir del .env en cada arranque (nunca se sube a GitHub)
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        F=/mosquitto/data/passwd
+        mosquitto_passwd -b -c $$F "$$MQTT_USER_ESP32" "$$MQTT_PASS_ESP32"
+        mosquitto_passwd -b $$F "$$MQTT_USER_SERVICIOS" "$$MQTT_PASS_SERVICIOS"
+        chown mosquitto:mosquitto $$F && chmod 0700 $$F
+        exec mosquitto -c /mosquitto/config/mosquitto.conf
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -u \"$$MQTT_USER_SERVICIOS\" -P \"$$MQTT_PASS_SERVICIOS\" -t '$$SYS/broker/uptime' -C 1 -W 3"]
+      interval: 10s
+      retries: 5
+
+  influxdb:
+    image: influxdb:2.7
+    restart: unless-stopped
+    ports: ["8086:8086"]
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG: bodega
+      DOCKER_INFLUXDB_INIT_BUCKET: bodega
+      DOCKER_INFLUXDB_INIT_RETENTION: 30d
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN}
+    volumes: [influx_data:/var/lib/influxdb2]
+
+  telegraf:                       # MQTT -> InfluxDB
+    image: telegraf:1.33
+    restart: unless-stopped
+    depends_on:
+      mosquitto: {condition: service_healthy}
+      influxdb: {condition: service_started}
+    environment:
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      MQTT_USER_SERVICIOS: ${MQTT_USER_SERVICIOS}
+      MQTT_PASS_SERVICIOS: ${MQTT_PASS_SERVICIOS}
+    volumes: [./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro]
+
+  api:                            # tiempo real + historial + alarmas Telegram
+    build: ./api
+    restart: unless-stopped
+    ports: ["8000:8000"]
+    depends_on:
+      mosquitto: {condition: service_healthy}
+    env_file: .env
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_USUARIO: ${MQTT_USER_SERVICIOS}
+      MQTT_CLAVE: ${MQTT_PASS_SERVICIOS}
+      INFLUX_URL: http://influxdb:8086
+      DIR_FOTOS: /data/fotos
+    volumes: [fotos:/data/fotos]
+
+  dashboard:                      # React compilado, servido por nginx (proxy a la API)
+    build: ../dashboard
+    restart: unless-stopped
+    ports: ["8080:80"]
+    depends_on: [api]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    environment:
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on: [influxdb]
+
+volumes:
+  mosquitto_data:
+  influx_data:
+  grafana_data:
+  fotos:

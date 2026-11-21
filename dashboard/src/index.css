@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/* Tokens de diseño: "sala de control de una bodega de café".
+   Superficies tostadas (espresso), acento pergamino y colores de estado validados para daltonismo. */
+@theme {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --font-display: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-fondo: #110b07;
+  --color-panel: #1a120c;
+  --color-panel-2: #231811;
+  --color-linea: rgb(255 228 196 / 0.09);
+  --color-linea-fuerte: rgb(255 228 196 / 0.18);
+  --color-texto: #f4eadd;
+  --color-suave: #b3a293;
+  --color-tenue: #8a7a6c;
+
+  --color-pergamino: #d9a55b;
+  --color-temp: #ec9f4a;
+  --color-hum: #3bb8c4;
+  --color-ok: #4fb477;
+  --color-aviso: #e3a23b;
+  --color-critica: #ef5a5a;
+  --color-info: #6aa7e8;
+}
+
+@layer base {
+  html { color-scheme: dark; }
+  body {
+    @apply bg-fondo text-texto font-sans antialiased;
+    font-feature-settings: "tnum";
+    background-image:
+      radial-gradient(1200px 600px at 15% -10%, rgb(217 165 91 / 0.10), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgb(59 184 196 / 0.06), transparent 60%);
+    background-attachment: fixed;
+  }
+  :focus-visible { outline: 2px solid var(--color-pergamino); outline-offset: 2px; border-radius: 6px; }
+  ::selection { background: rgb(217 165 91 / 0.35); }
+}
+
+@layer components {
+  .panel {
+    @apply relative rounded-2xl border border-linea bg-panel/80 backdrop-blur-md;
+    box-shadow: inset 0 1px 0 rgb(255 240 220 / 0.04), 0 20px 40px -24px rgb(0 0 0 / 0.6);
+  }
+  .etiqueta { @apply text-[11px] font-medium uppercase tracking-[0.14em] text-suave; }
+  .cifra { @apply font-mono tabular-nums; }
+  /* Grano sutil para dar textura de saco de fique */
+  .grano::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

@@ -14,3 +14,10 @@ labsuser.pem
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Python / Node
+.venv/
+__pycache__/
+.pytest_cache/
+node_modules/
+dist/

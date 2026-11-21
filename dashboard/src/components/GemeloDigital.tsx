@@ -159,26 +159,43 @@ function NieblaHumedad({ humedad, reducir }: { humedad?: number; reducir: boolea
   );
 }
 
+// La cámara está montada en la pared y apunta a la pila de sacos más cercana.
+const POS_CAMARA = new THREE.Vector3(2.9, 2.9, 1.6);
+const OBJETIVO_CAMARA = new THREE.Vector3(2.1, 0.55, -0.4); // centro de la pila derecha
+
 function Camara({ mala, clase }: { mala: boolean; clase?: string }) {
   const cono = useRef<THREE.MeshBasicMaterial>(null!);
+  const grupo = useRef<THREE.Group>(null!);
+  const largo = POS_CAMARA.distanceTo(OBJETIVO_CAMARA);
+
+  // Cono con la punta en el origen y la base hacia +z: así lookAt() lo apunta al objetivo
+  const geoCono = useMemo(() => {
+    const g = new THREE.ConeGeometry(0.85, largo, 40, 1, true);
+    g.translate(0, -largo / 2, 0);
+    g.rotateX(-Math.PI / 2);
+    return g;
+  }, [largo]);
+
+  useEffect(() => { grupo.current.lookAt(OBJETIVO_CAMARA); }, []);
   useFrame((e) => {
     cono.current.color.lerp(mala ? C.critica : clase ? C.ok : C.info, 0.06);
-    cono.current.opacity = mala ? 0.13 + Math.sin(e.clock.elapsedTime * 5) * 0.05 : 0.045;
+    cono.current.opacity = mala ? 0.15 + Math.sin(e.clock.elapsedTime * 5) * 0.05 : 0.085;
   });
+
   return (
-    <group position={[2.9, 2.9, 1.6]} rotation={[0, 0, 0]}>
+    <group ref={grupo} position={POS_CAMARA}>
       <mesh>
-        <boxGeometry args={[0.26, 0.2, 0.2]} />
+        <boxGeometry args={[0.2, 0.2, 0.26]} />
         <meshStandardMaterial color="#2b211a" roughness={0.5} />
       </mesh>
-      <mesh position={[-0.13, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+      {/* lente, en la cara que mira a los sacos */}
+      <mesh position={[0, 0, 0.14]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.06, 0.06, 0.05, 16]} />
         <meshStandardMaterial color="#111" metalness={0.8} roughness={0.2} />
       </mesh>
-      {/* campo de visión hacia los sacos */}
-      <mesh position={[-1.55, -1.25, -0.6]} rotation={[0.25, 0, 0.98]}>
-        <coneGeometry args={[0.7, 3.4, 32, 1, true]} />
-        <meshBasicMaterial ref={cono} color="#4fb477" transparent opacity={0.09} side={THREE.DoubleSide} depthWrite={false} />
+      {/* campo de visión: sale del lente y cubre la pila de sacos */}
+      <mesh geometry={geoCono} position={[0, 0, 0.16]}>
+        <meshBasicMaterial ref={cono} color="#4fb477" transparent opacity={0.06} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
     </group>
   );
@@ -254,7 +271,7 @@ function Escena(d: DatosGemelo) {
 
       <Etiqueta posicion={[1.6, 1.05, -2.9]} titulo="Ventilador · Edge Impulse" nivel={nivelVent}
         valor={vent ? `${vent.etiqueta} ${d.ventConf != null ? pct(d.ventConf) : ''}` : 'esperando datos'} />
-      <Etiqueta posicion={[2.9, 2.55, 1.6]} titulo="ESP32-CAM" nivel={d.visionMala ? 'critica' : d.visionClase ? 'ok' : 'info'} valor={d.visionClase ?? 'esperando'} />
+      <Etiqueta posicion={[3.45, 2.45, 1.6]} titulo="ESP32-CAM" nivel={d.visionMala ? 'critica' : d.visionClase ? 'ok' : 'info'} valor={d.visionClase ?? 'esperando'} />
       <Etiqueta posicion={[-2.1, 1.9, -0.4]} titulo="Café pergamino" nivel={d.humedad != null && d.humedad > d.rangoHum[1] ? 'critica' : 'ok'}
         valor={d.humedad != null ? `${d.humedad.toFixed(1).replace('.', ',')} % HR` : '—'} />
 

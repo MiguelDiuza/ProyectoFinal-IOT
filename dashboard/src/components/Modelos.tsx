@@ -133,7 +133,7 @@ export function GraficoConfianza() {
       xAxis: { type: 'time', ...EJE, splitLine: { show: false }, axisLabel: { ...EJE.axisLabel, formatter: horaEje } },
       yAxis: { type: 'value', min: 0, max: 1, ...EJE, axisLabel: { ...EJE.axisLabel, formatter: (v: number) => `${v * 100}%` } },
       series: [
-        { name: 'Ventilador', type: 'line', step: 'end', symbol: 'circle', symbolSize: 5, lineStyle: { width: 1.4, color: '#d9a55b' }, itemStyle: { color: '#d9a55b' },
+        { name: 'Ventilador', type: 'line', symbol: 'circle', symbolSize: 5, lineStyle: { width: 1.4, color: '#d9a55b' }, itemStyle: { color: '#d9a55b' },
           data: vent.slice(-150).map(punto) as never, markLine: umbral(cfg.umbral_ventilador, 'umbral ventilador') },
         { name: 'Cámara', type: 'line', symbol: 'diamond', symbolSize: 9, lineStyle: { width: 1.4, color: '#c9a0f0', type: [6, 4] }, itemStyle: { color: '#c9a0f0' },
           data: vis.slice(-60).map(punto) as never, markLine: umbral(cfg.umbral_vision, 'umbral cámara') },

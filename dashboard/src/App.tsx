@@ -62,14 +62,19 @@ function useFuente() {
 // ---------- Notificaciones en pantalla para cada alarma nueva ----------
 function useAvisos() {
   const alertas = useBodega((s) => s.alertas);
-  const visto = useRef<string | null | undefined>(undefined);
+  const visto = useRef<string | null>(null);
+  const abierto = useRef(Date.now());
   useEffect(() => {
     const a = alertas[0];
-    const clave = a ? `${a.id}-${a.t}-${a.estado}` : null;
-    if (visto.current === undefined || !a) { visto.current = clave; return; } // no avisar lo que ya estaba al cargar
+    if (!a) return;
+    const clave = `${a.id}-${a.t}-${a.estado}`;
     if (clave === visto.current) return;
+    // Solo se avisan las alarmas nuevas: las del historial (anteriores a abrir la página) no
     const nuevas = [];
-    for (const x of alertas) { if (`${x.id}-${x.t}-${x.estado}` === visto.current) break; nuevas.push(x); }
+    for (const x of alertas) {
+      if (`${x.id}-${x.t}-${x.estado}` === visto.current || x.t < abierto.current - 2000) break;
+      nuevas.push(x);
+    }
     visto.current = clave;
     for (const x of nuevas.reverse()) {
       if (x.estado === 'resuelta') toast.success(x.mensaje);

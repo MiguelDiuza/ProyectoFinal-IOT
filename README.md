@@ -14,7 +14,7 @@ El sistema vigila tres cosas, cada una con un modelo de IA que corre en el dispo
 |---|---|---|---|
 | Temperatura y humedad | DHT11 | Pronóstico de T y H a 5 min → **alerta anticipada** si la bodega va a salir del rango seguro (15–25 °C, 50–65 %) | TinyML (TensorFlow Lite + EloquentTinyML) |
 | Ventiladores de la bodega | MPU6050 (acelerómetro) | Clasificación del estado del ventilador por su vibración: `apagado`, `normal`, `desbalanceado`, `obstruido` | Edge Impulse |
-| Imágenes | ESP32-CAM | Por definir | Edge Impulse |
+| Calidad del grano | ESP32-CAM | Clasificación de la foto del grano: `sano`, `negro` (grano negro), `partido` (grano partido / mordido) | Edge Impulse |
 
 ## Arquitectura
 
@@ -94,6 +94,44 @@ menos de 1 ms de red neuronal. En `normal` la confianza baja a ~0,55 porque se p
 `obstruido`, igual que en la matriz de confusión.
 
 ![Prueba en el ESP32](docs/esp32_prueba_ventilador_serial.png)
+
+## Modelo 3 — Calidad del grano con la ESP32-CAM (Edge Impulse)
+
+### Captura de imágenes
+
+- Cámara **ESP32-CAM AI-Thinker** (sensor OV3660) sobre la base **ESP32-CAM-MB** (USB).
+- Sketch [`esp32cam/captura_granos`](esp32cam/captura_granos/captura_granos.ino), basado en el ejemplo
+  *CameraWebServer*: se encuadra con el video en el navegador y se toma cada foto con *Get Still* /
+  `http://IP/capture`.
+- Granos de café sobre fondo blanco, con la cámara fija mirando hacia abajo. Los defectos se simularon
+  quemando granos (**grano negro**) y aplastándolos (**grano partido / mordido**).
+- **3 clases × 40 fotos = 120 imágenes** ([`esp32cam/fotos`](esp32cam/fotos)), división automática:
+  96 de entrenamiento y 24 de prueba. Cada archivo se llama `<clase>.<n>.jpg` para que Edge Impulse
+  tome la etiqueta del nombre.
+
+### Impulso
+
+| Bloque | Configuración |
+|---|---|
+| Datos | Imagen 96 × 96, *Fit shortest axis* |
+| Procesamiento | Image (RGB) |
+| Aprendizaje | Transfer Learning — MobileNetV2 96x96 0.35, con *data augmentation* |
+| Dispositivo objetivo | Espressif ESP-EYE (ESP32 240 MHz) |
+
+### Resultados
+
+| Versión del modelo | Validación | Prueba (24 fotos nunca vistas) |
+|---|---|---|
+| Cuantizada **int8** | 55 % (clasifica casi todo como `sano`) | — |
+| **float32** (la que se despliega) | **95 %** | **95,8 %** (AUC 1,00, F1 0,96): `negro` 100 %, `sano` 100 %, `partido` 87,5 % |
+
+En la ESP32-CAM (float32): **4,5 s** por inferencia, **421 KB** de RAM (necesita la PSRAM) y
+**1,6 MB** de flash (partición *Huge APP*). Una clasificación cada ~5 s es suficiente para
+inspeccionar lotes de grano.
+
+![Prueba float32](docs/cam_model_testing_float32.png)
+![Entrenamiento float32](docs/cam_entrenamiento_float32.png)
+![Entrenamiento int8](docs/cam_entrenamiento_int8.png)
 
 ## Conexiones
 
@@ -189,7 +227,9 @@ esp32/
   captura_ventilador/   Captura del acelerómetro para Edge Impulse
   prueba_ventilador/    Prueba del modelo del ventilador en el ESP32
   bodega_final/         Sketch final (modelos + WiFi + MQTT + servidor MCP)
-esp32cam/               Sketch de la cámara
+esp32cam/
+  captura_granos/       Captura de fotos con la ESP32-CAM (CameraWebServer)
+  fotos/                Dataset: 40 fotos por clase (sano, negro, partido)
 edge-impulse/           Notas del proyecto de Edge Impulse
 tinyml/                 Modelo de temperatura y humedad (notebook + .h)
 backend/
@@ -211,6 +251,10 @@ docs/                   Contrato MQTT, diagramas y capturas
 | El forwarder no conectaba | Cerrar el Monitor serie del Arduino IDE (el puerto COM solo lo usa un programa a la vez) |
 | El MPU6050 (GY-521) venía con los pines sin soldar | Prueba provisional: pines en la protoboard y el módulo inclinado y sujeto con cinta |
 | `tflm_esp32` 1.0.0 no compilaba con el paquete de placas ESP32 3.x | Usar el paquete de placas **esp32 de Espressif 2.0.17** |
+| Las primeras fotos de la ESP32-CAM salían borrosas y con el fondo texturizado (toalla de papel) | Subir la cámara a mayor distancia y usar una hoja blanca lisa como fondo |
+| Edge Impulse no dejaba elegir la etiqueta al subir las fotos: quedaron sin etiqueta o con el nombre del archivo | Renombrar los archivos como `<clase>.<n>.jpg` (Edge Impulse toma la etiqueta de lo que va antes del primer punto) y corregir con *Edit labels* |
+| El proyecto de la cámara se creó como *Object detection* y no aparecía el bloque de clasificación | *Dashboard → Labeling method → One label per data item* |
+| El modelo de imágenes cuantizado (int8) bajó a 55 % de accuracy | Desplegar la versión **float32** (95,8 % en prueba); la ESP32-CAM tiene PSRAM suficiente |
 | Tailwind CSS 4.0.0 fallaba al compilar los estilos (`Cannot convert undefined or null to object`) | Actualizar a Tailwind 4.1.11 |
 | El archivo de claves de Mosquitto no se puede subir a GitHub y escrito desde Windows queda con saltos de línea CRLF | Generarlo en el arranque del contenedor con `mosquitto_passwd` a partir del `.env` |
 | La API recibe sus propias alarmas al estar suscrita a `bodega1/#` | El contrato ignora `bodega1/alertas` al validar mensajes |

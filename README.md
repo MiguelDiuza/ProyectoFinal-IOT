@@ -167,6 +167,24 @@ En la ESP32-CAM (float32): **4,5 s** por inferencia, **421 KB** de RAM (necesita
 **1,6 MB** de flash (partición *Huge APP*). Una clasificación cada ~5 s es suficiente para
 inspeccionar lotes de grano.
 
+### En la ESP32-CAM con AWS
+
+Sketch [`esp32cam/camara_bodega`](esp32cam/camara_bodega/camara_bodega.ino) (librería del modelo en
+float32 + PubSubClient + ArduinoJson; placa AI Thinker ESP32-CAM, *Huge APP*):
+
+- Cada 10 s toma una foto, la recorta al cuadrado central de 96×96 y la clasifica (**~9 s** de
+  inferencia en la ESP32-CAM).
+- Publica en `bodega1/camara` (`clase`, `confianza`, `prob_negro`, `prob_partido`, `prob_sano`); la regla
+  `bodega_guardar_camara` lo guarda en DynamoDB con `dispositivo = bodega1-camara`.
+- Si ve un grano `negro` o `partido` con confianza ≥ 0,80, publica la alarma `grano_defectuoso` en
+  `bodega1/alertas` (máximo una vez por minuto).
+- Vista web en `http://<IP>` con la cámara en vivo y la última clasificación, para enfocar.
+- Tiene su propio *thing* `bodega1-camara`, certificado y política (`secrets.example.h` → `secrets.h`):
+  si usara el del ESP32, AWS desconectaría a uno de los dos por tener el mismo nombre de cliente.
+
+[`esp32cam/granos_local`](esp32cam/granos_local/granos_local.ino) es la versión sin AWS (solo clasifica,
+con la misma vista web).
+
 ![Prueba float32](docs/cam_model_testing_float32.png)
 ![Entrenamiento float32](docs/cam_entrenamiento_float32.png)
 ![Entrenamiento int8](docs/cam_entrenamiento_int8.png)
@@ -272,6 +290,8 @@ esp32/
   bodega_local/         Versión sin conexión del sketch integrado (solo Monitor serie)
 esp32cam/
   captura_granos/       Captura de fotos con la ESP32-CAM (CameraWebServer)
+  camara_bodega/        Clasificación de granos + AWS IoT Core + vista web (secrets.example.h)
+  granos_local/         Clasificación de granos sin AWS (solo vista web)
   fotos/                Dataset: 40 fotos por clase (sano, negro, partido)
 aws/
   iot/                  Política del dispositivo y SQL de las reglas de IoT
@@ -304,6 +324,9 @@ docs/                   Contrato MQTT, diagramas y capturas
 | El proyecto de la cámara se creó como *Object detection* y no aparecía el bloque de clasificación | *Dashboard → Labeling method → One label per data item* |
 | El modelo de imágenes cuantizado (int8) bajó a 55 % de accuracy | Desplegar la versión **float32** (95,8 % en prueba); la ESP32-CAM tiene PSRAM suficiente |
 | Al juntar los dos modelos en un solo sketch, EloquentTinyML/`tflm_esp32` y la librería de Edge Impulse daban "multiple definition" al enlazar (las dos traen TensorFlow Lite Micro) | La red T/H se ejecuta con sus pesos extraídos a `modelo_th_pesos.h` (mismas salidas que el intérprete de TFLite) |
+| En la ESP32-CAM el modelo de granos fallaba con `Failed to allocate persistent buffer ... reached EI_MAX_OVERFLOW_BUFFER_COUNT` | Subir `EI_MAX_OVERFLOW_BUFFER_COUNT` de 10 a 300 en `src/tflite-model/tflite_learn_*_compiled.cpp` de la librería instalada |
+| La ESP32-CAM veía colores distintos a los de las fotos de entrenamiento | Usar los mismos ajustes del sensor OV3660 que CameraWebServer (`vflip`, brillo +1, **saturación −2**) |
+| La ESP32-CAM se quedaba reintentando AWS (`rc=-2`) en el `setup()` y la vista web no respondía | Reconexión sin bloquear (un intento cada 5 s) e imprimir el motivo TLS con `net.lastError()`; además activar el certificado y asociarle la política y el *thing* |
 | Tailwind CSS 4.0.0 fallaba al compilar los estilos (`Cannot convert undefined or null to object`) | Actualizar a Tailwind 4.1.11 |
 | El archivo de claves de Mosquitto no se puede subir a GitHub y escrito desde Windows queda con saltos de línea CRLF | Generarlo en el arranque del contenedor con `mosquitto_passwd` a partir del `.env` |
 | La API recibe sus propias alarmas al estar suscrita a `bodega1/#` | El contrato ignora `bodega1/alertas` al validar mensajes |

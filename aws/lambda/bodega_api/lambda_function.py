@@ -9,7 +9,7 @@
 # Variables de entorno (Configuración -> Variables de entorno de la Lambda):
 #   TABLA          tabla de DynamoDB (por defecto bodega-lecturas)
 #   ID_LECTURAS    valor de "dispositivo" de las lecturas del ESP32 (por defecto bodega-esp32)
-#   ID_CAMARA      valor de "dispositivo" de la ESP32-CAM          (por defecto esp32cam-01)
+#   ID_CAMARA      valor de "dispositivo" de la ESP32-CAM          (por defecto bodega1-camara)
 #   ID_ALERTAS     valor de "dispositivo" de las alarmas guardadas (por defecto alertas)
 #   IOT_ENDPOINT   https://<id>-ats.iot.us-east-1.amazonaws.com (IoT Core -> Configuración)
 # Rol: LabRole (Learner Lab). Clave de la tabla: dispositivo (String) + ts (Number, ms).
@@ -25,7 +25,7 @@ from boto3.dynamodb.conditions import Key
 
 TABLA = os.environ.get("TABLA", "bodega-lecturas")
 ID_LECTURAS = os.environ.get("ID_LECTURAS", "bodega-esp32")
-ID_CAMARA = os.environ.get("ID_CAMARA", "esp32cam-01")
+ID_CAMARA = os.environ.get("ID_CAMARA", "bodega1-camara")
 ID_ALERTAS = os.environ.get("ID_ALERTAS", "alertas")
 IOT_ENDPOINT = os.environ.get("IOT_ENDPOINT", "")
 

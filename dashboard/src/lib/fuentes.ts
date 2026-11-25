@@ -150,8 +150,10 @@ export function eventosDeLectura(it: Item, cfg: ConfigBodega): Evento[] {
 export function eventosDeCamara(it: Item): Evento[] {
   const clase = s(it.clase);
   if (!clase) return [];
-  const t = tsDe(it), dispositivo = s(it.dispositivo) ?? 'esp32cam-01';
+  const t = tsDe(it), dispositivo = s(it.dispositivo) ?? 'bodega1-camara';
   const probs = probsDe(it.probs);
+  // camara_bodega.ino manda prob_negro, prob_partido, prob_sano como campos sueltos
+  for (const [k, x] of Object.entries(it)) if (k.startsWith('prob_')) { const y = n(x); if (y !== undefined) probs[k.slice(5)] = y; }
   const ev: Evento[] = [{ tipo: 'vision', t, dispositivo, clase, confianza: n(it.confianza) ?? probs[clase] ?? 0, probs }];
   const foto = s(it.foto) ?? s(it.imagen);
   if (foto && /^https?:\/\//.test(foto)) ev.push({ tipo: 'foto', t, dispositivo, url: foto });
@@ -394,7 +396,7 @@ export function conectarDemo(cfg: ConfigBodega, motivo: string): () => void {
     // Cada 10 s: ESP32-CAM
     if (tick % 5 === 2) {
       const cv = g.vision === 'sano' ? 0.86 + Math.random() * 0.11 : 0.8 + Math.random() * 0.13;
-      emitir({ tipo: 'vision', t, dispositivo: 'esp32cam-01', clase: g.vision, confianza: +cv.toFixed(3), probs: probs(g.vision, cv, ['sano', 'negro', 'partido']) });
+      emitir({ tipo: 'vision', t, dispositivo: 'bodega1-camara', clase: g.vision, confianza: +cv.toFixed(3), probs: probs(g.vision, cv, ['sano', 'negro', 'partido']) });
       const mala = cfg.clases_alerta_vision.includes(g.vision) && cv >= cfg.umbral_vision;
       regla('vision', 'vision', g.vision === 'negro' ? 'critica' : 'aviso', mala, 1, 2, t,
         `La cámara detectó grano ${g.vision} (confianza ${fmt(cv, 2)})`, 'La cámara volvió a ver grano sano');

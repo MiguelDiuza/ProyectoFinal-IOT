@@ -4,7 +4,7 @@
     { "Effect": "Allow", "Action": "iot:Connect",
       "Resource": [
         "arn:aws:iot:us-east-1:<ID_CUENTA>:client/bodega-esp32",
-        "arn:aws:iot:us-east-1:<ID_CUENTA>:client/esp32cam-01"
+        "arn:aws:iot:us-east-1:<ID_CUENTA>:client/bodega1-camara"
       ] },
     { "Effect": "Allow", "Action": ["iot:Publish", "iot:Receive"],
       "Resource": "arn:aws:iot:us-east-1:<ID_CUENTA>:topic/bodega1/*" },

@@ -36,9 +36,11 @@ muestra y alerta, con servicios **serverless de AWS** (reutilizando la Actividad
 | `bodega1/lecturas` | ESP32 → AWS, cada 10 s | `temperatura`, `humedad`, `estado`, `t_pred`, `h_pred`, `estado_futuro`, `alerta_anticipada`, `vent_clase`, `vent_confianza`, `vent_falla`, `rms_acc`, `rms_giro`, `led` |
 | `bodega1/alertas` | ESP32 → AWS, solo al aparecer | `{"tipo": "alerta_anticipada" / "alerta_th" / "falla_ventilador", "mensaje": "..."}` |
 | `bodega1/led` | AWS → ESP32 | `ON` / `OFF` (actuador de ventilación, LED D2) |
-| `bodega1/camara` | ESP32-CAM → AWS | Clasificación del grano (en desarrollo) |
+| `bodega1/camara` | ESP32-CAM → AWS | `{"clase": "sano" / "negro" / "partido", "confianza", "probs"}` (en desarrollo; ver [`docs/contrato-aws.md`](docs/contrato-aws.md)) |
 
-Archivos de AWS en [`aws/`](aws/): política del dispositivo, SQL de las reglas y la Lambda de alarmas.
+Archivos de AWS en [`aws/`](aws/): política de los dispositivos, SQL de las reglas, la Lambda de alarmas y la
+Lambda `bodega-api` del dashboard. Pasos para dejar el dashboard en S3: [`aws/README.md`](aws/README.md).
+Formato de los mensajes y de la API: [`docs/contrato-aws.md`](docs/contrato-aws.md).
 
 > También existe una **alternativa local con Docker** (Mosquitto, InfluxDB, Grafana, API de alarmas y
 > dashboard 3D) en [`backend/`](backend/) y [`dashboard/`](dashboard/); ver la sección
@@ -274,6 +276,8 @@ esp32cam/
 aws/
   iot/                  Política del dispositivo y SQL de las reglas de IoT
   lambda/bodega_alertas Lambda que envía las alarmas a Telegram
+  lambda/bodega_api     Lambda de la API del dashboard (GET /dashboard, /lecturas, /lecturas/csv, POST /led)
+  README.md             Pasos de despliegue en AWS y del dashboard en S3
 edge-impulse/           Notas del proyecto de Edge Impulse
 tinyml/                 Modelo de temperatura y humedad (notebook + .h)
 backend/

@@ -102,31 +102,32 @@ export function GraficoImu({ modo }: { modo: 'acel' | 'giro' }) {
     const tipos = ['solid', [6, 4], [2, 3]] as const;
     return {
       animation: false,
-      grid: { left: 40, right: modo === 'acel' ? 44 : 12, top: 30, bottom: 24 },
+      grid: { left: 40, right: 44, top: 30, bottom: 24 },
       tooltip: { ...TOOLTIP, valueFormatter: (v) => (typeof v === 'number' ? v.toFixed(3) : String(v)) },
       legend: { top: 0, right: 0, icon: 'roundRect', itemWidth: 14, itemHeight: 3, textStyle: { color: '#b3a293', fontSize: 11 } },
       xAxis: { type: 'time', ...EJE, splitLine: { show: false }, axisLabel: { ...EJE.axisLabel, formatter: horaEje } },
       yAxis: [
         { type: 'value', scale: true, name: modo === 'acel' ? 'm/s²' : '°/s', nameTextStyle: { color: '#8a7a6c', fontSize: 10 }, ...EJE },
-        ...(modo === 'acel' ? [{ type: 'value' as const, name: 'RMS', min: 0, max: 0.2, nameTextStyle: { color: '#d9a55b', fontSize: 10 }, ...EJE, splitLine: { show: false } }] : []),
+        { type: 'value' as const, name: modo === 'acel' ? 'RMS' : 'RMS rad/s', min: 0, nameTextStyle: { color: '#d9a55b', fontSize: 10 }, ...EJE, splitLine: { show: false } },
       ],
       series: [
         // az ronda 9,8 (gravedad): se centra restando su media para ver la vibración en la misma escala
         ...ejes.map((k, i) => ({
           name: k === 'az' ? 'az − g' : k, type: 'line' as const, showSymbol: false, yAxisIndex: 0,
           lineStyle: { width: 1.4, color: colores[i], type: tipos[i] as never }, itemStyle: { color: colores[i] },
-          data: imu.filter((m) => m[k] != null).map((m) => [m.t, k === 'az' ? +(m.az - 9.81).toFixed(3) : m[k]!]),
+          data: imu.filter((m) => m[k] != null).map((m) => [m.t, k === 'az' ? +(m.az! - 9.81).toFixed(3) : m[k]!]),
         })),
-        ...(modo === 'acel' ? [{
-          name: 'vibración RMS', type: 'bar' as const, yAxisIndex: 1, barMaxWidth: 4, itemStyle: { color: 'rgba(217,165,91,0.45)' },
-          data: imu.filter((m) => m.vib_rms != null).map((m) => [m.t, m.vib_rms!]),
-        }] : []),
+        // RMS de la ventana: es lo único que manda el sketch de AWS (rms_acc → vib_rms, rms_giro)
+        {
+          name: modo === 'acel' ? 'vibración RMS' : 'giro RMS', type: 'bar' as const, yAxisIndex: 1, barMaxWidth: 4, itemStyle: { color: 'rgba(217,165,91,0.45)' },
+          data: imu.map((m) => [m.t, modo === 'acel' ? m.vib_rms : m.rms_giro] as const).filter(([, v]) => v != null).map(([t, v]) => [t, v!]),
+        },
       ],
     };
   }, [imu, modo]);
   const u = ultimo(imu);
   const texto = modo === 'acel'
     ? `Acelerómetro: ax ${num(u?.ax, 2)}, ay ${num(u?.ay, 2)}, az ${num(u?.az, 2)} metros por segundo al cuadrado; vibración ${num(u?.vib_rms, 3)}.`
-    : `Giroscopio: gx ${num(u?.gx, 1)}, gy ${num(u?.gy, 1)}, gz ${num(u?.gz, 1)} grados por segundo.`;
+    : `Giroscopio: gx ${num(u?.gx, 1)}, gy ${num(u?.gy, 1)}, gz ${num(u?.gz, 1)} grados por segundo; giro RMS ${num(u?.rms_giro, 3)} radianes por segundo.`;
   return <Grafico opcion={opcion} alto={190} etiqueta={texto} />;
 }

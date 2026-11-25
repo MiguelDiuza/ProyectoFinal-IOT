@@ -3,7 +3,9 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 // En desarrollo, /api y /ws van a la API local (backend/api en el puerto 8000)
+// base './': el build funciona desde la raíz del sitio estático de S3 o desde una subcarpeta
 export default defineConfig({
+  base: './',
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { COLOR_NIVEL, hora } from '../lib/formato';
 import { useBodega } from '../lib/store';
 import type { Alerta } from '../lib/tipos';
+import { MODO } from '../lib/fuentes';
 
 const ORIGEN: Record<string, string> = {
   pronostico: 'TinyML · pronóstico', ambiente: 'DHT11 · medida', ventilador: 'Edge Impulse · ventilador',
@@ -53,10 +54,10 @@ export function HistorialAlarmas() {
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-suave">Cada alarma que se activa o se resuelve también se envía por Telegram.</p>
+        <p className="text-sm text-suave">{MODO === 'serverless' ? 'El ESP32 publica cada alarma nueva y la Lambda bodega-alertas la envía por Telegram.' : 'Cada alarma que se activa o se resuelve también se envía por Telegram.'}</p>
         <span className="flex items-center gap-1.5 rounded-full border border-linea px-2.5 py-1 text-xs"
-          style={{ color: telegram ? 'var(--color-ok)' : 'var(--color-suave)' }}>
-          <Send size={12} aria-hidden /> {modo === 'demo' ? 'Telegram: simulado' : telegram ? 'Telegram conectado' : 'Telegram sin configurar'}
+          style={{ color: telegram || (MODO === 'serverless' && modo !== 'demo') ? 'var(--color-ok)' : 'var(--color-suave)' }}>
+          <Send size={12} aria-hidden /> {modo === 'demo' ? 'Telegram: simulado' : MODO === 'serverless' ? 'Telegram vía AWS Lambda' : telegram ? 'Telegram conectado' : 'Telegram sin configurar'}
         </span>
       </div>
       {!alertas.length ? (

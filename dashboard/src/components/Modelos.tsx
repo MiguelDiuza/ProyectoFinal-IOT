@@ -10,7 +10,7 @@ import Grafico, { EJE, TOOLTIP, horaEje } from './Grafico';
 
 const COLOR_CLASE: Record<string, string> = {
   apagado: COLOR_HEX.info, normal: COLOR_HEX.ok, desbalanceado: COLOR_HEX.critica, obstruido: COLOR_HEX.aviso, incierto: '#9b8cc4',
-  sano: COLOR_HEX.ok, moho: COLOR_HEX.critica, broca: COLOR_HEX.aviso, defecto: COLOR_HEX.aviso,
+  sano: COLOR_HEX.ok, negro: COLOR_HEX.critica, partido: COLOR_HEX.aviso, moho: COLOR_HEX.critica, broca: COLOR_HEX.aviso, defecto: COLOR_HEX.aviso,
 };
 const colorClase = (c: string) => COLOR_CLASE[c] ?? '#b3a293';
 const LEYENDA = { top: 0, right: 0, icon: 'roundRect', itemWidth: 14, itemHeight: 3, textStyle: { color: '#b3a293', fontSize: 11 } } as const;

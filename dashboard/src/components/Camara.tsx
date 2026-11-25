@@ -23,7 +23,7 @@ export function PanelCamara() {
           <div className="grid h-full place-items-center p-6 text-center">
             <GranosIlustracion mala={mala} />
             <figcaption className="absolute bottom-3 left-3 right-3 flex items-center justify-center gap-1.5 text-xs text-suave">
-              <ImageOff size={13} aria-hidden className="shrink-0" /> <span>Sin foto todavía · la ESP32-CAM la envía con <code className="whitespace-nowrap font-mono">POST /api/camara</code></span>
+              <ImageOff size={13} aria-hidden className="shrink-0" /> <span>La ESP32-CAM publica solo la clasificación; la ilustración refleja lo que ve</span>
             </figcaption>
           </div>
         )}

@@ -19,6 +19,7 @@ export interface Estado {
   esp32Conectado: boolean | null;
   ultimoDato: number | null;  // hora del último evento del ESP32
   servicios: { mqtt: boolean; influx: boolean; telegram: boolean } | null;
+  led: 'ON' | 'OFF' | null;   // estado del actuador (LED D2) que reporta el ESP32
   pausado: boolean;
 }
 
@@ -26,7 +27,7 @@ let estado: Estado = {
   conexion: { modo: 'conectando' },
   config: CONFIG_POR_DEFECTO,
   lecturas: [], pronostico: [], imu: [], ventilador: [], vision: [], alertas: [],
-  activas: {}, foto: null, esp32Conectado: null, ultimoDato: null, servicios: null, pausado: false,
+  activas: {}, foto: null, esp32Conectado: null, ultimoDato: null, servicios: null, led: null, pausado: false,
 };
 const oyentes = new Set<() => void>();
 let pendientes: Evento[] = [];
@@ -46,6 +47,7 @@ function aplicar(s: Estado, ev: Evento): Estado {
     case 'ventilador': return { ...s, ventilador: agregar(s.ventilador, ev, LIMITE.ventilador), ultimoDato: ev.t, esp32Conectado: true };
     case 'vision': return { ...s, vision: agregar(s.vision, ev, LIMITE.vision) };
     case 'foto': return { ...s, foto: { url: ev.url, t: ev.t } };
+    case 'led': return { ...s, led: ev.estado };
     case 'dispositivo': return ev.dispositivo.startsWith('esp32cam') ? s : { ...s, esp32Conectado: ev.conectado };
     case 'alerta': {
       const activas = { ...s.activas };
@@ -95,7 +97,7 @@ export function setPausa(pausado: boolean) {
 
 export function reiniciar() {
   pendientes = [];
-  estado = { ...estado, lecturas: [], pronostico: [], imu: [], ventilador: [], vision: [], alertas: [], activas: {}, foto: null, ultimoDato: null };
+  estado = { ...estado, lecturas: [], pronostico: [], imu: [], ventilador: [], vision: [], alertas: [], activas: {}, foto: null, ultimoDato: null, led: null };
   notificar();
 }
 

@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Box, Coffee, LayoutGrid, Pause, Play, Radio, Wifi, WifiOff } from 'lucide-react';
+import { Activity, Box, Coffee, Download, LayoutGrid, Lightbulb, Pause, Play, Radio, Wifi, WifiOff } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Toaster, toast } from 'sonner';
@@ -8,7 +8,7 @@ import { GraficoClima, TarjetasClima } from './components/Clima';
 import { SeccionModelos } from './components/Modelos';
 import { EstadoVentilador, GraficoImu, LineaTiempoVentilador } from './components/Ventilador';
 import { EstadoModelos } from './components/VistaAnalitica';
-import { FORZAR_DEMO, GRAFANA_URL, conectarApi, conectarDemo } from './lib/fuentes';
+import { CSV_URL, FORZAR_DEMO, MODO, conectarApi, conectarDemo, conectarServerless, enviarLed } from './lib/fuentes';
 import { hace } from './lib/formato';
 import { leer, setPausa, ultimo, useBodega } from './lib/store';
 
@@ -53,7 +53,8 @@ function useFuente() {
   useEffect(() => {
     if (modoDemo) return conectarDemo(leer().config, FORZAR_DEMO ? 'Modo demostración (?demo)' : 'Elegiste la demostración');
     let detenerDemo: (() => void) | undefined;
-    const detenerApi = conectarApi((motivo) => { detenerDemo = conectarDemo(leer().config, `La API no responde (${motivo})`); });
+    const conectar = MODO === 'serverless' ? conectarServerless : conectarApi;
+    const detenerApi = conectar((motivo) => { detenerDemo = conectarDemo(leer().config, `La API no responde (${motivo})`); });
     return () => { detenerApi(); detenerDemo?.(); };
   }, [modoDemo]);
   return { modoDemo, setModoDemo };
@@ -135,10 +136,46 @@ function Encabezado({ modoDemo, setModoDemo, vista, setVista }: { modoDemo: bool
           <button type="button" className={boton} onClick={() => setModoDemo(!modoDemo)}>
             <Activity size={13} aria-hidden />{modoDemo ? 'Conectar a la API' : 'Ver demostración'}
           </button>
-          <a className={boton} href={GRAFANA_URL} target="_blank" rel="noreferrer"><BarChart3 size={13} aria-hidden />Grafana</a>
+          {CSV_URL && <a className={boton} href={CSV_URL} download><Download size={13} aria-hidden />Descargar CSV</a>}
         </div>
       </div>
     </header>
+  );
+}
+
+// Actuador: el LED D2 del ESP32 se prende o apaga desde la API (Lambda → IoT Core → bodega1/led)
+function ControlLed() {
+  const led = useBodega((s) => s.led);
+  const conexion = useBodega((s) => s.conexion);
+  const [enviando, setEnviando] = useState<'ON' | 'OFF' | null>(null);
+  const enviar = async (estado: 'ON' | 'OFF') => {
+    setEnviando(estado);
+    try {
+      await enviarLed(estado);
+      toast.success(estado === 'ON' ? 'LED encendido: orden enviada al ESP32' : 'LED apagado: orden enviada al ESP32');
+    } catch (e) {
+      toast.error(`No se pudo enviar la orden al ESP32: ${e instanceof Error ? e.message : 'error de red'}. Revisa la conexión con la API.`);
+    } finally {
+      setEnviando(null);
+    }
+  };
+  const boton = (activo: boolean) =>
+    `flex min-h-9 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-sm transition-colors disabled:cursor-wait disabled:opacity-60 ${activo ? 'border-pergamino/60 bg-pergamino/15 text-pergamino' : 'border-linea text-suave hover:border-linea-fuerte hover:text-texto'}`;
+  return (
+    <div className="panel p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="etiqueta">Actuador · LED D2</span>
+        <span className="flex items-center gap-1.5 text-xs text-suave">
+          <Lightbulb size={13} aria-hidden style={{ color: led === 'ON' ? 'var(--color-aviso)' : undefined }} />
+          {led === 'ON' ? 'Encendido' : led === 'OFF' ? 'Apagado' : 'Sin reporte'}
+        </span>
+      </div>
+      <div className="mt-3 flex gap-2" role="group" aria-label="Encender o apagar el LED del ESP32">
+        <button type="button" className={boton(led === 'ON')} disabled={!!enviando} onClick={() => enviar('ON')}>{enviando === 'ON' ? 'Enviando…' : 'Encender'}</button>
+        <button type="button" className={boton(led === 'OFF')} disabled={!!enviando} onClick={() => enviar('OFF')}>{enviando === 'OFF' ? 'Enviando…' : 'Apagar'}</button>
+      </div>
+      {conexion.modo === 'demo' && <p className="mt-2 text-[11px] text-tenue">En la demostración la orden no sale del navegador.</p>}
+    </div>
   );
 }
 
@@ -205,6 +242,7 @@ function Hero() {
           <span className="etiqueta">Alarmas activas</span>
           <div className="mt-3"><AlarmasActivas /></div>
         </div>
+        <ControlLed />
       </div>
     </section>
   );
@@ -230,13 +268,16 @@ function HeroAnalitico() {
           <span className="etiqueta">Alarmas activas</span>
           <div className="mt-3"><AlarmasActivas /></div>
         </div>
+        <ControlLed />
       </div>
     </section>
   );
 }
 
 function Arquitectura() {
-  const pasos = ['DHT11 + MPU6050', 'ESP32 · TinyML + Edge Impulse', 'MQTT · Mosquitto', 'Telegraf → InfluxDB', 'API · alarmas', 'Dashboard · Grafana · Telegram'];
+  const pasos = MODO === 'serverless'
+    ? ['DHT11 + MPU6050 + ESP32-CAM', 'TinyML + Edge Impulse en el borde', 'MQTT/TLS · AWS IoT Core', 'Reglas IoT → DynamoDB', 'Lambda + API Gateway', 'Dashboard en S3 · Telegram']
+    : ['DHT11 + MPU6050', 'ESP32 · TinyML + Edge Impulse', 'MQTT · Mosquitto', 'Telegraf → InfluxDB', 'API · alarmas', 'Dashboard · Grafana · Telegram'];
   return (
     <footer className="mx-auto max-w-[1440px] px-4 pb-10 pt-4 sm:px-6">
       <ol className="flex flex-wrap items-center gap-2 text-xs text-suave" aria-label="Arquitectura del sistema">

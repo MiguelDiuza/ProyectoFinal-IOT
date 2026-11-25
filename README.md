@@ -3,7 +3,21 @@
 Proyecto final del curso **Inteligencia Artificial aplicada a Internet de las Cosas**
 (Especialización en IA — Actividad 4: implementar un modelo de IA en un microcontrolador).
 
-> 🚧 En construcción. Este README se va completando a medida que avanza el proyecto.
+Tres modelos de IA corren **en los microcontroladores** (Edge AI): un pronóstico de temperatura y
+humedad (TinyML), un clasificador del estado del ventilador por vibración y un clasificador de la
+calidad del grano con cámara (Edge Impulse). Los datos y las predicciones viajan por **MQTT/TLS a AWS
+IoT Core**, se guardan en **DynamoDB**, se ven en un **dashboard** en S3, las alarmas llegan por
+**Telegram** y la bodega se puede consultar en lenguaje natural con un **servidor MCP** en el ESP32.
+
+| Requisito de la actividad | Dónde está |
+|---|---|
+| Caso de uso (T/H, movimiento e imágenes) | [Caso de uso](#caso-de-uso) |
+| Modelos de IA en el dispositivo Edge | [Modelo 1](#modelo-1--pronóstico-de-temperatura-y-humedad-tinyml) · [Modelo 2](#modelo-2--estado-del-ventilador-edge-impulse) · [Modelo 3](#modelo-3--calidad-del-grano-con-la-esp32-cam-edge-impulse) |
+| ESP32 en WiFi, envío por MQTT | [Arquitectura](#arquitectura) · [Sketch final](#sketch-final-del-esp32) |
+| Servidor MCP en lenguaje natural | [Sketch final](#sketch-final-del-esp32) · [Pruebas](#pruebas-de-punta-a-punta) |
+| Base de datos | DynamoDB `bodega-lecturas` · [Pruebas](#pruebas-de-punta-a-punta) |
+| Dashboard (sensores + predicciones) y alarmas | [Pruebas](#pruebas-de-punta-a-punta) |
+| Inconvenientes, resultados y conclusiones | [Inconvenientes](#inconvenientes-y-soluciones) · [Resultados](#resumen-de-resultados) · [Conclusiones](#conclusiones) |
 
 ## Caso de uso
 
@@ -74,6 +88,30 @@ en [`esp32/bodega_local`](esp32/bodega_local/bodega_local.ino).
    acción **Lambda** → `bodega-alertas`.
 4. Probar en el *Cliente de prueba MQTT* publicando en `bodega1/alertas`:
    `{"tipo":"falla_ventilador","mensaje":"Prueba"}`.
+
+## Modelo 1 — Pronóstico de temperatura y humedad (TinyML)
+
+Entrenado en Google Colab con TensorFlow ([`tinyml/TinyML_bodega_cafe.ipynb`](tinyml/TinyML_bodega_cafe.ipynb))
+a partir de las lecturas reales del DHT11 guardadas en DynamoDB en la Actividad 3
+([`tinyml/lecturas_bodega.csv`](tinyml/lecturas_bodega.csv), ~2.900 lecturas, 4 sesiones).
+
+- **Entradas (8):** cuánto cambiaron T y H respecto al valor actual hace 1, 2, 3 y 4 minutos.
+- **Salidas (2):** cuánto cambiarán T y H en 5 minutos → `T_pred = T_actual + ΔT`.
+- Se descartaron otros enfoques: T en función de H (r = 0,29), T/H en función de la hora (solo 11 horas
+  con datos) y clasificar `estado` (es una regla fija).
+- División cronológica 60/20/20 dentro de cada sesión (no aleatoria, para no filtrar datos casi iguales).
+- Modelo exportado: red densa 8 → 16 → 16 → 2, TensorFlow Lite de **3,8 KB**.
+
+| Prueba (último 20 % de cada sesión) | MAE T (°C) | MAE H (%) |
+|---|---|---|
+| Persistencia ("todo sigue igual") | 0,151 | 1,227 |
+| Regresión lineal | 0,139 | 0,882 |
+| **Red 16-16 (exportada)** | **0,137** | **0,875** |
+
+- La humedad mejora ~29 % frente a la persistencia.
+- Estado a +5 min: **98,0 %** de acierto (persistencia 94,5 %); anticipa el **63 %** de los cambios de
+  estado, que la persistencia nunca anticipa.
+- En el ESP32 se ejecuta en **microsegundos** con los pesos extraídos a `modelo_th_pesos.h` (ver sketch final).
 
 ## Modelo 2 — Estado del ventilador (Edge Impulse)
 
@@ -200,6 +238,58 @@ con la misma vista web).
 | LED falla ventilador | D18 |
 | VCC / GND de sensores | 3V3 / GND (por los rieles de la protoboard) |
 
+## Montaje físico
+
+![Montaje físico](docs/montaje-fisico.png)
+
+## Pruebas de punta a punta
+
+**Dashboard en S3 (gemelo 3D):** temperatura, humedad y pronóstico TinyML, estado del ventilador, cámara,
+alarmas activas y el actuador LED D19.
+
+![Dashboard AWS](docs/dashboard_aws_3d.png)
+![Dashboard con alarma de grano](docs/dashboard_aws_alarma_grano.png)
+
+**Cámara en vivo en el dashboard** (abierto en la red local con `npx serve` en `dashboard/dist`) y la
+vista web de la propia ESP32-CAM, con la clasificación del modelo:
+
+![Cámara en vivo en el dashboard](docs/dashboard_aws_camara_vivo.png)
+![Vista web de la ESP32-CAM](docs/esp32cam_vista_web.png)
+
+**Alarmas por Telegram** generadas por los tres modelos (☕ grano defectuoso, 🌀 falla del ventilador,
+🌡️ alerta de temperatura/humedad):
+
+<img src="docs/telegram_alarmas.jpg" alt="Alarmas en Telegram" width="320">
+
+**Servidor MCP desde Claude Desktop:** la pregunta en lenguaje natural usa `leer_sensores`,
+`prediccion_5min` y `estado_ventilador`, y "enciende el LED D19" usa `controlar_led`.
+
+![MCP en Claude Desktop](docs/mcp_claude_desktop.png)
+
+**DynamoDB (`bodega-lecturas`):** una partición por origen de datos (*Explorar elementos → Consultar*).
+
+| `dispositivo` | Contenido |
+|---|---|
+| `bodega-esp32` | Sensores + pronóstico TinyML + ventilador |
+| `bodega1-camara` | Clasificación de granos |
+| `alertas` | Historial de alarmas (regla `bodega_guardar_alertas`) |
+
+![DynamoDB ESP32](docs/dynamodb_esp32.png)
+![DynamoDB cámara](docs/dynamodb_camara.png)
+![DynamoDB alertas](docs/dynamodb_alertas.png)
+
+## Cómo poner en marcha la demo
+
+1. **Learner Lab:** *Start Lab* (verde). IoT Core, DynamoDB, Lambda, API Gateway y S3 conservan su configuración.
+2. **ESP32** (`esp32/bodega_final`, COM): en el Monitor serie debe salir `Conectando a AWS IoT Core... OK`
+   y la IP del servidor MCP. El pronóstico aparece a los ~4 min.
+3. **ESP32-CAM** (`esp32cam/camara_bodega`): `AWS IoT... conectado` y `PUB OK` cada 10 s.
+4. **Dashboard:** `http://bodega-cafe-dashboard-jorge.s3-website-us-east-1.amazonaws.com/` (o, para ver la
+   cámara en vivo, `npx serve -l 8080` dentro de `dashboard/dist` y abrir `http://localhost:8080`).
+5. **Claude Desktop** con `mcp-remote` apuntando a `http://<IP del ESP32>/mcp`.
+6. Probar: tapar el ventilador o ponerle la moneda (LED D18 + Telegram), poner un grano partido bajo la
+   cámara (Telegram), preguntar a Claude por la bodega y encender el actuador.
+
 ## Alternativa local con Docker
 
 Backend y dashboard alternativos para correr todo en un PC sin AWS.
@@ -300,7 +390,7 @@ aws/
   lambda/bodega_api     Lambda de la API del dashboard (GET /dashboard, /lecturas, /lecturas/csv, POST /led)
   README.md             Pasos de despliegue en AWS y del dashboard en S3
 edge-impulse/           Notas del proyecto de Edge Impulse
-tinyml/                 Modelo de temperatura y humedad (notebook + .h)
+tinyml/                 Modelo T/H: notebook de Colab, CSV de entrenamiento, .tflite y sketch de prueba
 backend/
   docker-compose.yml    Mosquitto, Telegraf, InfluxDB, API, dashboard y Grafana
   api/                  API FastAPI: tiempo real, historial, cámara y alarmas (con pruebas)
@@ -332,6 +422,35 @@ docs/                   Contrato MQTT, diagramas y capturas
 | El archivo de claves de Mosquitto no se puede subir a GitHub y escrito desde Windows queda con saltos de línea CRLF | Generarlo en el arranque del contenedor con `mosquitto_passwd` a partir del `.env` |
 | La API recibe sus propias alarmas al estar suscrita a `bodega1/#` | El contrato ignora `bodega1/alertas` al validar mensajes |
 
+## Resumen de resultados
+
+| Modelo | Dónde corre | Resultado | Tiempo en el dispositivo |
+|---|---|---|---|
+| Pronóstico T/H (TinyML, red 8-16-16-2) | ESP32 | MAE 0,137 °C y 0,875 % HR; estado a +5 min 98 % | < 1 ms (3,8 KB) |
+| Ventilador (Edge Impulse, Spectral + red 20-10) | ESP32 | 85,3 % validación · 79,4 % prueba (AUC 0,98) | 4 ms DSP + < 1 ms red (1,4 KB RAM) |
+| Granos (Edge Impulse, MobileNetV2 96×96 float32) | ESP32-CAM | 95 % validación · 95,8 % prueba (AUC 1,00) | ~9 s (421 KB RAM en PSRAM) |
+
+## Conclusiones
+
+- **La IA en el borde funciona en hardware de pocos dólares:** los tres modelos corren en los
+  microcontroladores; la nube solo recibe resultados. Así el sistema reacciona (LEDs) aunque se caiga
+  internet, y se envían unos pocos bytes de predicción en vez de datos crudos o imágenes.
+- **Cada problema pidió un enfoque distinto:** con pocos datos de T/H, un pronóstico de corto plazo
+  con diferencias supera a la persistencia y anticipa alertas; la vibración se separa bien con análisis
+  espectral; las imágenes necesitaron *transfer learning*.
+- **El despliegue importa tanto como el entrenamiento:** la cuantización int8 hundió el modelo de
+  imágenes (55 %), los colores de la cámara debían coincidir con los del entrenamiento y las dos
+  librerías de TensorFlow Lite no podían convivir en un mismo sketch.
+- **La arquitectura serverless de la Actividad 3 se reutilizó casi completa:** solo se agregaron reglas
+  de IoT, una Lambda de alarmas y un thing para la cámara.
+- **MCP convierte el dispositivo en una herramienta para un asistente de IA:** Claude combina las
+  lecturas y las predicciones de los modelos para responder y actuar en lenguaje natural.
+- **Limitaciones y mejoras:** pocos datos (8 h de T/H, 48 muestras de vibración, 120 fotos), el
+  desbalance simulado con una moneda y fotos algo borrosas. Con más días de datos, un desbalance real y
+  la cámara enfocada mejorarían los modelos; el dashboard en S3 no puede mostrar la cámara en vivo por
+  la protección de red local del navegador (se resolvería subiendo las fotos a S3).
+
 ## Equipo
 
-Proyecto en grupo — Especialización en IA.
+Juliana Campuzano · Jorge Iván González · Miguel Diuza · Yolima — Especialización en Inteligencia
+Artificial, curso Inteligencia Artificial aplicada a IoT.

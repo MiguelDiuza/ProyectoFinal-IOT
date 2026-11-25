@@ -35,7 +35,7 @@ muestra y alerta, con servicios **serverless de AWS** (reutilizando la Actividad
 |---|---|---|
 | `bodega1/lecturas` | ESP32 → AWS, cada 10 s | `temperatura`, `humedad`, `estado`, `t_pred`, `h_pred`, `estado_futuro`, `alerta_anticipada`, `vent_clase`, `vent_confianza`, `vent_falla`, `rms_acc`, `rms_giro`, `led` |
 | `bodega1/alertas` | ESP32 → AWS, solo al aparecer | `{"tipo": "alerta_anticipada" / "alerta_th" / "falla_ventilador", "mensaje": "..."}` |
-| `bodega1/led` | AWS → ESP32 | `ON` / `OFF` (actuador de ventilación, LED D2) |
+| `bodega1/led` | AWS → ESP32 | `ON` / `OFF` (actuador de ventilación, LED D19) |
 | `bodega1/camara` | ESP32-CAM → AWS | `{"clase": "sano" / "negro" / "partido", "confianza", "probs"}` (en desarrollo; ver [`docs/contrato-aws.md`](docs/contrato-aws.md)) |
 
 Archivos de AWS en [`aws/`](aws/): política de los dispositivos, SQL de las reglas, la Lambda de alarmas y la
@@ -196,6 +196,7 @@ con la misma vista web).
 | DHT11 (datos) | D4 |
 | MPU6050 SDA / SCL | D21 / D22 |
 | LED alerta T/H | D2 |
+| LED actuador (dashboard / MCP) | D19 |
 | LED falla ventilador | D18 |
 | VCC / GND de sensores | 3V3 / GND (por los rieles de la protoboard) |
 

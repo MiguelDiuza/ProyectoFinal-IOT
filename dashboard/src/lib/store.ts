@@ -19,7 +19,7 @@ export interface Estado {
   esp32Conectado: boolean | null;
   ultimoDato: number | null;  // hora del último evento del ESP32
   servicios: { mqtt: boolean; influx: boolean; telegram: boolean } | null;
-  led: 'ON' | 'OFF' | null;   // estado del actuador (LED D2) que reporta el ESP32
+  led: 'ON' | 'OFF' | null;   // estado del actuador (LED D19) que reporta el ESP32
   pausado: boolean;
 }
 

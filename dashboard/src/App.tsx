@@ -143,7 +143,7 @@ function Encabezado({ modoDemo, setModoDemo, vista, setVista }: { modoDemo: bool
   );
 }
 
-// Actuador: el LED D2 del ESP32 se prende o apaga desde la API (Lambda → IoT Core → bodega1/led)
+// Actuador: el LED D19 del ESP32 se prende o apaga desde la API (Lambda → IoT Core → bodega1/led)
 function ControlLed() {
   const led = useBodega((s) => s.led);
   const conexion = useBodega((s) => s.conexion);
@@ -164,7 +164,7 @@ function ControlLed() {
   return (
     <div className="panel p-4">
       <div className="flex items-center justify-between gap-2">
-        <span className="etiqueta">Actuador · LED D2</span>
+        <span className="etiqueta">Actuador · LED D19</span>
         <span className="flex items-center gap-1.5 text-xs text-suave">
           <Lightbulb size={13} aria-hidden style={{ color: led === 'ON' ? 'var(--color-aviso)' : undefined }} />
           {led === 'ON' ? 'Encendido' : led === 'OFF' ? 'Apagado' : 'Sin reporte'}

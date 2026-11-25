@@ -1,6 +1,8 @@
 // Clasificación de imágenes de la ESP32-CAM: última foto, probabilidades e historial.
-import { Camera, ImageOff } from 'lucide-react';
+import { Camera, ImageOff, Wifi } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
+import { CAMARA_VIVO } from '../lib/fuentes';
 import { hora, pct } from '../lib/formato';
 import { ultimo, useBodega } from '../lib/store';
 
@@ -13,11 +15,19 @@ export function PanelCamara() {
   const mala = v ? esMala(v.clase, v.confianza) : false;
   const color = !v ? 'var(--color-suave)' : mala ? 'var(--color-critica)' : 'var(--color-ok)';
   const clases = v ? Object.entries(v.probs).sort((a, b) => b[1] - a[1]) : [];
+  const vivo = useVistaVivo();
 
   return (
     <div className="grid gap-5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
       <figure className="relative aspect-[4/3] overflow-hidden rounded-xl border border-linea bg-panel-2">
-        {foto ? (
+        {vivo ? (
+          <>
+            <img src={vivo} alt="Vista en vivo de la ESP32-CAM" className="h-full w-full object-cover" />
+            <figcaption className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-lg bg-fondo/85 px-2.5 py-1 text-xs text-suave backdrop-blur">
+              <Wifi size={13} aria-hidden className="shrink-0" /> <span>En vivo desde la ESP32-CAM (red local)</span>
+            </figcaption>
+          </>
+        ) : foto ? (
           <img src={foto.url} alt={`Última foto de la ESP32-CAM, clasificada como ${v?.clase ?? 'sin clasificar'}`} className="h-full w-full object-cover" />
         ) : (
           <div className="grid h-full place-items-center p-6 text-center">
@@ -71,6 +81,29 @@ export function PanelCamara() {
       </div>
     </div>
   );
+}
+
+// Pide una foto nueva a la ESP32-CAM (GET /vivo) cada ~1,5 s. Devuelve null si no hay URL
+// configurada o si la cámara no responde (por ejemplo, fuera de la red local): entonces se muestra
+// la ilustración. Mientras la cámara clasifica (~9 s) la foto se queda quieta: es normal.
+function useVistaVivo() {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!CAMARA_VIVO) return;
+    let activo = true;
+    let timer: ReturnType<typeof setTimeout>;
+    let fallos = 0;
+    const pedir = () => {
+      const img = new Image();
+      const url = `${CAMARA_VIVO}/vivo?t=${Date.now()}`;
+      img.onload = () => { if (!activo) return; fallos = 0; setSrc(url); timer = setTimeout(pedir, 1500); };
+      img.onerror = () => { if (!activo) return; if (++fallos >= 3) setSrc(null); timer = setTimeout(pedir, 5000); };
+      img.src = url;
+    };
+    pedir();
+    return () => { activo = false; clearTimeout(timer); };
+  }, []);
+  return src;
 }
 
 // Ilustración de granos de café pergamino (cuando no hay foto real)

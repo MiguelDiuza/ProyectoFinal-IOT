@@ -5,13 +5,16 @@ import { cargarInicial, emitir, leer, reiniciar, setConexion } from './store';
 import type { Alerta, ConfigBodega, Evento, Imu, Lectura, Nivel, Pronostico, Ventilador, Vision } from './tipos';
 
 // public/config.js (se edita en S3 sin recompilar) define window.BODEGA_CONFIG
-interface ConfigDespliegue { api?: string; modo?: string; sondeoSeg?: number }
+interface ConfigDespliegue { api?: string; modo?: string; sondeoSeg?: number; camaraVivo?: string }
 const DESPLIEGUE: ConfigDespliegue = (window as unknown as { BODEGA_CONFIG?: ConfigDespliegue }).BODEGA_CONFIG ?? {};
 
 const params = new URLSearchParams(location.search);
 export const API_BASE = (params.get('api') ?? DESPLIEGUE.api ?? '').trim().replace(/\/$/, '');
 export const MODO: 'serverless' | 'local' = (params.get('modo') ?? DESPLIEGUE.modo) === 'serverless' ? 'serverless' : 'local';
 export const FORZAR_DEMO = params.has('demo');
+// Vista en vivo de la ESP32-CAM (http://<IP> en la red local; ?cam=http://IP también sirve).
+// Solo se ve si quien abre el dashboard está en la misma red WiFi que la cámara.
+export const CAMARA_VIVO = (params.get('cam') ?? DESPLIEGUE.camaraVivo ?? '').trim().replace(/\/$/, '');
 const VELOCIDAD_DEMO = Math.min(10, Math.max(0.25, Number(params.get('vel')) || 1)); // ?vel=3 acelera el guion
 const SONDEO_MS = Math.min(60, Math.max(2, Number(DESPLIEGUE.sondeoSeg) || 5)) * 1000;
 export const CSV_URL = MODO === 'serverless' && API_BASE ? `${API_BASE}/lecturas/csv?horas=24` : null;

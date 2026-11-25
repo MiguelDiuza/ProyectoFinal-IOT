@@ -44,7 +44,7 @@ curl -X POST "https://<API_ID>.execute-api.us-east-1.amazonaws.com/led" -d '{"es
 
 1. Cliente de prueba MQTT suscrito a `bodega1/#`: llegan lecturas (y cámara y alarmas).
 2. DynamoDB → `bodega-lecturas`: items con `dispositivo` = `bodega-esp32`, `alertas` y `bodega1-camara`.
-3. Dashboard en S3: arriba dice **En vivo**; el botón del LED prende el LED D2 del ESP32.
+3. Dashboard en S3: arriba dice **En vivo**; el botón del LED prende el LED D19 del ESP32.
 4. Una alarma (tapar el ventilador) llega a Telegram y aparece en el dashboard; cuando el
    ventilador vuelve a *normal*, el dashboard la marca como resuelta.
 

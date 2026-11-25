@@ -15,7 +15,7 @@
                              (la regla de IoT lo guarda en DynamoDB)
         - bodega1/alertas  : solo cuando aparece una alarma generada por la IA
                              (la regla de alarmas la envía a Telegram)
-        - bodega1/led      : comando ON/OFF desde el dashboard (actuador)
+        - bodega1/led      : comando ON/OFF desde el dashboard (actuador, LED D19)
    4. Servidor MCP (Model Context Protocol) en http://<IP>/mcp :
       permite preguntarle a la bodega en lenguaje natural desde Claude, Gemini o
       VS Code. Herramientas: leer_sensores, prediccion_5min, estado_ventilador,
@@ -46,6 +46,7 @@
   secrets.h (WiFi + certificados; NO se sube a GitHub, ver secrets.example.h).
 
   Conexiones: DHT11 -> D4 | MPU6050 SDA/SCL -> D21/D22 | LED T/H -> D2 | LED ventilador -> D18
+              | LED actuador (ventilación, se controla desde el dashboard o por MCP) -> D19
 */
 
 #include <bodega-cafe_inferencing.h>   // modelo del ventilador (Edge Impulse)
@@ -64,8 +65,9 @@
 // ===== Pines =====
 #define DHTPIN          4
 #define DHTTYPE         DHT11
-#define LED_TH          2              // alerta anticipada de T/H (y actuador manual desde el dashboard)
-#define LED_VENT        18             // falla del ventilador
+#define LED_TH          2              // alerta anticipada de T/H (solo el modelo TinyML)
+#define LED_VENT        18             // falla del ventilador (solo el modelo de Edge Impulse)
+#define LED_ACTUADOR    19             // actuador de ventilación: lo enciende una persona (dashboard o MCP)
 
 // ===== Regla de la bodega =====
 #define T_MIN 15.0
@@ -116,7 +118,7 @@ struct Ultimo {
   bool  anticipada = false;
 } ult;
 
-bool ledManual = false;                // actuador encendido desde el dashboard o desde MCP
+bool ledManual = false;                // actuador (D19) encendido desde el dashboard o desde MCP
 bool alertaTHAntes = false, fallaVentAntes = false;
 unsigned long ultAlertaTH = 0, ultAlertaVent = 0, ultIntentoAWS = 0, ultIntentoWiFi = 0;
 
@@ -246,10 +248,11 @@ void tareaVentilador(void*) {
 // ------------------------------------------------------------------
 //  Conexión a AWS IoT Core (Actividad 3)
 // ------------------------------------------------------------------
-void actualizarLedTH() {
-  // D2 se enciende si el modelo predice ALERTA o si se pidió encender el actuador
+void actualizarLeds() {
+  // D2: solo la predicción del modelo T/H | D19: solo el actuador manual (dashboard / MCP)
   bool alertaFutura = ult.hayPred && strcmp(ult.estFut, "ALERTA") == 0;
-  digitalWrite(LED_TH, (alertaFutura || ledManual) ? HIGH : LOW);
+  digitalWrite(LED_TH, alertaFutura ? HIGH : LOW);
+  digitalWrite(LED_ACTUADOR, ledManual ? HIGH : LOW);
 }
 
 // Llega un comando del dashboard por bodega1/led
@@ -260,7 +263,7 @@ void alRecibir(char* topic, byte* payload, unsigned int length) {
   Serial.printf("Comando recibido [%s]: %s\n", topic, msg.c_str());
   if (msg == "ON")  ledManual = true;
   if (msg == "OFF") ledManual = false;
-  actualizarLedTH();
+  actualizarLeds();
 }
 
 // Reconecta WiFi y MQTT sin bloquear el resto del programa
@@ -305,7 +308,7 @@ void publicarLectura(const EstadoVentilador& v) {
   d["temperatura"] = r2(ult.t);
   d["humedad"]     = r2(ult.h);
   d["estado"]      = ult.estado;
-  d["led"]         = ledManual ? "ON" : "OFF";          // actuador manual (dashboard / MCP)
+  d["led"]         = ledManual ? "ON" : "OFF";          // actuador D19 (dashboard / MCP)
   if (ult.hayPred) {                               // modelo T/H (TinyML)
     d["t_pred"]            = r2(ult.tPred);
     d["h_pred"]            = r2(ult.hPred);
@@ -383,8 +386,8 @@ String ejecutarTool(const char* nombre, JsonVariant args, bool& error) {
       return "Parámetro inválido: estado debe ser 'on' u 'off'.";
     }
     ledManual = strcmp(e, "on") == 0;
-    actualizarLedTH();
-    return ledManual ? "Actuador (ventilación, LED D2) encendido." : "Actuador (ventilación, LED D2) apagado.";
+    actualizarLeds();
+    return ledManual ? "Actuador (ventilación, LED D19) encendido." : "Actuador (ventilación, LED D19) apagado.";
   }
   error = true;
   return String("Herramienta desconocida: ") + nombre;
@@ -421,7 +424,7 @@ void atenderMCP() {
     agregarTool(tools, "estado_ventilador",
                 "Estado del ventilador según el modelo de vibración (apagado, normal, desbalanceado u obstruido).");
     agregarTool(tools, "controlar_led",
-                "Enciende o apaga el actuador de ventilación de la bodega (LED D2).", true);
+                "Enciende o apaga el actuador de ventilación de la bodega (LED D19).", true);
   } else if (strcmp(metodo, "tools/call") == 0) {
     bool error;
     String texto = ejecutarTool(req["params"]["name"] | "", req["params"]["arguments"], error);
@@ -440,7 +443,7 @@ void atenderMCP() {
 
   String out;
   serializeJson(res, out);
-  server.send(200, "application/json", out);
+  server.send(200, "application/json; charset=utf-8", out);
 }
 
 // ------------------------------------------------------------------
@@ -451,6 +454,7 @@ void setup() {
 
   pinMode(LED_TH, OUTPUT);
   pinMode(LED_VENT, OUTPUT);
+  pinMode(LED_ACTUADOR, OUTPUT);
 
   // MPU6050: mismo montaje y configuración que en la captura para Edge Impulse
   Wire.begin(21, 22);
@@ -540,7 +544,7 @@ void loop() {
     Serial.printf(" | +%d min: T=%.2f H=%.2f (%s)%s", HORIZONTE_MIN, ult.tPred, ult.hPred, ult.estFut,
                   ult.anticipada ? " <<< ALERTA ANTICIPADA" : "");
   }
-  actualizarLedTH();
+  actualizarLeds();
 
   Serial.printf(" || Ventilador: %s %.2f | RMS acc %.3f m/s2 giro %.3f rad/s | DSP %d ms red %d ms%s\n",
                 v.clase, v.confianza, v.rmsAcc, v.rmsGiro, v.msDsp, v.msRed,

@@ -61,24 +61,7 @@ Formato de los mensajes y de la API: [`docs/contrato-aws.md`](docs/contrato-aws.
 > [Alternativa local con Docker](#alternativa-local-con-docker). Usa su propio contrato de temas
 > ([`docs/contrato-mqtt.md`](docs/contrato-mqtt.md)).
 
-## Sketch final del ESP32
-
-[`esp32/bodega_final`](esp32/bodega_final/bodega_final.ino) corre los dos modelos y se conecta a AWS:
-
-- **Modelo T/H (TinyML):** la red 8-16-16-2 del notebook se ejecuta con sus pesos extraídos a
-  `modelo_th_pesos.h`. No se usa EloquentTinyML porque su TensorFlow Lite Micro choca
-  ("multiple definition") con el que trae la librería de Edge Impulse.
-- **Modelo del ventilador (Edge Impulse):** en una tarea de FreeRTOS a 100 Hz exactos, para que la
-  conexión no atrase el muestreo.
-- **AWS IoT Core:** WiFi + MQTT/TLS con los certificados de `secrets.h` (copiar `secrets.example.h`).
-- **Servidor MCP** (JSON-RPC 2.0 sobre HTTP, `POST /mcp`) con las herramientas `leer_sensores`,
-  `prediccion_5min`, `estado_ventilador` y `controlar_led`.
-
-Librerías: `bodega-cafe_inferencing` (Edge Impulse), Adafruit MPU6050, DHT sensor library, PubSubClient
-y ArduinoJson 7. Paquete de placas **esp32 2.0.17**. La versión sin conexión (solo Monitor serie) está
-en [`esp32/bodega_local`](esp32/bodega_local/bodega_local.ino).
-
-### Alarmas por Telegram en AWS
+## Alarmas por Telegram en AWS
 
 1. Crear el bot con **@BotFather** y obtener el `chat_id` con `https://api.telegram.org/bot<TOKEN>/getUpdates`.
 2. *Lambda → Crear función* `bodega-alertas`, Python 3.12, rol **LabRole**, con
@@ -226,6 +209,23 @@ con la misma vista web).
 ![Prueba float32](docs/cam_model_testing_float32.png)
 ![Entrenamiento float32](docs/cam_entrenamiento_float32.png)
 ![Entrenamiento int8](docs/cam_entrenamiento_int8.png)
+
+## Sketch final del ESP32
+
+[`esp32/bodega_final`](esp32/bodega_final/bodega_final.ino) corre los dos modelos y se conecta a AWS:
+
+- **Modelo T/H (TinyML):** la red 8-16-16-2 del notebook se ejecuta con sus pesos extraídos a
+  `modelo_th_pesos.h`. No se usa EloquentTinyML porque su TensorFlow Lite Micro choca
+  ("multiple definition") con el que trae la librería de Edge Impulse.
+- **Modelo del ventilador (Edge Impulse):** en una tarea de FreeRTOS a 100 Hz exactos, para que la
+  conexión no atrase el muestreo.
+- **AWS IoT Core:** WiFi + MQTT/TLS con los certificados de `secrets.h` (copiar `secrets.example.h`).
+- **Servidor MCP** (JSON-RPC 2.0 sobre HTTP, `POST /mcp`) con las herramientas `leer_sensores`,
+  `prediccion_5min`, `estado_ventilador` y `controlar_led`.
+
+Librerías: `bodega-cafe_inferencing` (Edge Impulse), Adafruit MPU6050, DHT sensor library, PubSubClient
+y ArduinoJson 7. Paquete de placas **esp32 2.0.17**. La versión sin conexión (solo Monitor serie) está
+en [`esp32/bodega_local`](esp32/bodega_local/bodega_local.ino).
 
 ## Conexiones
 

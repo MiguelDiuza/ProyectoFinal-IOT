@@ -452,5 +452,5 @@ docs/                   Contrato MQTT, diagramas y capturas
 
 ## Equipo
 
-Juliana Campuzano · Jorge Iván González · Miguel Diuza · Yolima — Especialización en Inteligencia
+Juliana Campuzano · Jorge Iván González · Miguel Diuza · Yolima Guadir — Especialización en Inteligencia
 Artificial, curso Inteligencia Artificial aplicada a IoT.

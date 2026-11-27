@@ -1,67 +1,77 @@
 /*
-  Captura de fotos de granos de café con la ESP32-CAM (AI-Thinker, sensor OV3660)
-  ------------------------------------------------------------------------------
-  Basado en el ejemplo CameraWebServer del paquete esp32 de Arduino.
-  Levanta una página web en la IP de la cámara para ver el video (Start Stream)
-  y tomar fotos (Get Still / http://IP/capture). Las fotos se guardaron en
-  esp32cam/fotos/<clase>/ y se subieron a Edge Impulse para entrenar el modelo
-  sano / negro / partido.
+  ==============================================================================
+  CAPTURA DE FOTOS DE GRANOS DE CAFÉ — ESP32-CAM (AI-Thinker, sensor OV3660)
+  ==============================================================================
+  ¿Para qué sirve este sketch?
+    Es la etapa de RECOLECCIÓN DE DATOS del Modelo 3 (calidad del grano).
+    Convierte la ESP32-CAM en una cámara web: al abrir su IP en el navegador se ve
+    el video en vivo y se pueden tomar fotos. Con él se tomaron las 120 fotos de
+    granos (sano / negro / partido) que se subieron a Edge Impulse para entrenar.
 
-  Cambios respecto al ejemplo: CAMERA_MODEL_AI_THINKER (línea ~27) y WiFi (ssid/password).
-  Placa: AI Thinker ESP32-CAM | Partition Scheme: Huge APP (3MB No OTA)
+  ¿Por qué tomar las fotos con la misma ESP32-CAM y no con un celular?
+    Para que el modelo aprenda con la misma cámara, resolución, colores y ruido
+    que va a tener cuando clasifique en la bodega. Si se entrena con fotos de
+    celular, el modelo falla en el dispositivo real.
+
+  Flujo de uso:
+    1. Cargar el sketch y abrir el Monitor serie (115200) para ver la IP.
+    2. Abrir http://<IP> en el navegador → "Start Stream" para encuadrar el grano.
+    3. "Get Still" (o http://<IP>/capture) para tomar la foto y guardarla.
+    4. Guardar cada foto en esp32cam/fotos/<clase>/ y subirlas a Edge Impulse.
+
+  Base: ejemplo CameraWebServer del paquete esp32 de Arduino. Cambios propios:
+    - Modelo de cámara AI_THINKER (línea 44).
+    - Credenciales de la red WiFi (líneas 52-53).
+  Archivos que acompañan este sketch (sin cambios, vienen del ejemplo):
+    - app_httpd.cpp   : servidor web (rutas /, /stream, /capture, /control).
+    - camera_index.h  : página web comprimida con los controles de la cámara.
+    - camera_pins.h   : pines de cada modelo de cámara.
+
+  Configuración en el Arduino IDE:
+    Placa: AI Thinker ESP32-CAM | Partition Scheme: Huge APP (3MB No OTA) | Puerto: COM4
+  ==============================================================================
 */
 
-#include "esp_camera.h"
-#include <WiFi.h>
+#include "esp_camera.h"   // librería de la cámara (drivers del sensor OV3660)
+#include <WiFi.h>         // conexión a la red WiFi
 
-//
-// WARNING!!! PSRAM IC required for UXGA resolution and high JPEG quality
-//            Ensure ESP32 Wrover Module or other board with PSRAM is selected
-//            Partial images will be transmitted if image exceeds buffer size
-//
-//            You must select partition scheme from the board menu that has at least 3MB APP space.
-//            Face Recognition is DISABLED for ESP32 and ESP32-S2, because it takes up from 15 
-//            seconds to process single frame. Face Detection is ENABLED if PSRAM is enabled as well
-
-// ===================
-// Select camera model
-// ===================
-//#define CAMERA_MODEL_WROVER_KIT // Has PSRAM
-#define CAMERA_MODEL_AI_THINKER 
-//#define CAMERA_MODEL_ESP32S3_EYE // Has PSRAM
-//#define CAMERA_MODEL_M5STACK_PSRAM // Has PSRAM
-//#define CAMERA_MODEL_M5STACK_V2_PSRAM // M5Camera version B Has PSRAM
-//#define CAMERA_MODEL_M5STACK_WIDE // Has PSRAM
-//#define CAMERA_MODEL_M5STACK_ESP32CAM // No PSRAM
-//#define CAMERA_MODEL_M5STACK_UNITCAM // No PSRAM
-//#define CAMERA_MODEL_AI_THINKER // Has PSRAM
-//#define CAMERA_MODEL_TTGO_T_JOURNAL // No PSRAM
-//#define CAMERA_MODEL_XIAO_ESP32S3 // Has PSRAM
-// ** Espressif Internal Boards **
-//#define CAMERA_MODEL_ESP32_CAM_BOARD
-//#define CAMERA_MODEL_ESP32S2_CAM_BOARD
-//#define CAMERA_MODEL_ESP32S3_CAM_LCD
-//#define CAMERA_MODEL_DFRobot_FireBeetle2_ESP32S3 // Has PSRAM
-//#define CAMERA_MODEL_DFRobot_Romeo_ESP32S3 // Has PSRAM
+// ------------------------------------------------------------------------------
+// 1. MODELO DE CÁMARA
+// ------------------------------------------------------------------------------
+// El ejemplo trae una lista de placas; se deja activa solo la AI-Thinker, que es
+// la que se usa. camera_pins.h toma esta definición y asigna los pines
+// correctos (datos D0-D7, reloj, sincronismo, I2C del sensor, etc.).
+#define CAMERA_MODEL_AI_THINKER   // ESP32-CAM AI-Thinker (tiene PSRAM de 4 MB)
 #include "camera_pins.h"
 
-// ===========================
-// Enter your WiFi credentials
-// ===========================
+// ------------------------------------------------------------------------------
+// 2. CREDENCIALES WIFI
+// ------------------------------------------------------------------------------
+// La ESP32 solo se conecta a redes de 2,4 GHz. En el repositorio se dejan valores
+// de ejemplo; la clave real nunca se sube a GitHub.
 const char* ssid = "TU_WIFI";          // nombre de la red WiFi (2,4 GHz)
 const char* password = "TU_CLAVE";     // clave de la red
 
-void startCameraServer();
-void setupLedFlash(int pin);
+// Funciones definidas en app_httpd.cpp (servidor web del ejemplo)
+void startCameraServer();      // arranca la página web y las rutas /stream y /capture
+void setupLedFlash(int pin);   // configura el LED flash de la placa (GPIO 4)
 
 void setup() {
+  // Monitor serie: aquí se ve el avance de la conexión y la IP de la cámara
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println();
 
+  // ----------------------------------------------------------------------------
+  // 3. CONFIGURACIÓN DE LA CÁMARA
+  // ----------------------------------------------------------------------------
   camera_config_t config;
+
+  // Reloj que la ESP32 le entrega al sensor (canal y temporizador PWM)
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
+
+  // Pines del bus de datos paralelo de 8 bits por donde llega la imagen
   config.pin_d0 = Y2_GPIO_NUM;
   config.pin_d1 = Y3_GPIO_NUM;
   config.pin_d2 = Y4_GPIO_NUM;
@@ -70,99 +80,106 @@ void setup() {
   config.pin_d5 = Y7_GPIO_NUM;
   config.pin_d6 = Y8_GPIO_NUM;
   config.pin_d7 = Y9_GPIO_NUM;
+
+  // Pines de control: reloj, sincronismo de píxel/línea/cuadro
   config.pin_xclk = XCLK_GPIO_NUM;
   config.pin_pclk = PCLK_GPIO_NUM;
   config.pin_vsync = VSYNC_GPIO_NUM;
   config.pin_href = HREF_GPIO_NUM;
+
+  // Bus SCCB (tipo I2C) para enviarle ajustes al sensor (brillo, saturación...)
   config.pin_sccb_sda = SIOD_GPIO_NUM;
   config.pin_sccb_scl = SIOC_GPIO_NUM;
+
+  // Pines de apagado y reinicio del sensor
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  config.frame_size = FRAMESIZE_UXGA;
-  config.pixel_format = PIXFORMAT_JPEG; // for streaming
-  //config.pixel_format = PIXFORMAT_RGB565; // for face detection/recognition
+
+  config.xclk_freq_hz = 20000000;           // reloj del sensor: 20 MHz
+  config.frame_size = FRAMESIZE_UXGA;       // tamaño máximo reservado: 1600x1200
+  config.pixel_format = PIXFORMAT_JPEG;     // las fotos salen comprimidas en JPEG
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
-  config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.jpeg_quality = 12;
-  config.fb_count = 1;
-  
-  // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
-  //                      for larger pre-allocated frame buffer.
-  if(config.pixel_format == PIXFORMAT_JPEG){
-    if(psramFound()){
+  config.fb_location = CAMERA_FB_IN_PSRAM;  // la imagen se guarda en la PSRAM (4 MB)
+  config.jpeg_quality = 12;                 // 0-63: número menor = mejor calidad
+  config.fb_count = 1;                      // cantidad de buffers de imagen
+
+  // Con PSRAM (la AI-Thinker la tiene) se sube la calidad y se usan 2 buffers:
+  // mientras uno se envía por WiFi, el otro ya captura el siguiente cuadro,
+  // y siempre se entrega la imagen más reciente (video más fluido).
+  if (config.pixel_format == PIXFORMAT_JPEG) {
+    if (psramFound()) {
       config.jpeg_quality = 10;
       config.fb_count = 2;
       config.grab_mode = CAMERA_GRAB_LATEST;
     } else {
-      // Limit the frame size when PSRAM is not available
+      // Sin PSRAM no cabe UXGA: se baja a 800x600 en la RAM interna
       config.frame_size = FRAMESIZE_SVGA;
       config.fb_location = CAMERA_FB_IN_DRAM;
     }
-  } else {
-    // Best option for face detection/recognition
-    config.frame_size = FRAMESIZE_240X240;
-#if CONFIG_IDF_TARGET_ESP32S3
-    config.fb_count = 2;
-#endif
   }
 
-#if defined(CAMERA_MODEL_ESP_EYE)
-  pinMode(13, INPUT_PULLUP);
-  pinMode(14, INPUT_PULLUP);
-#endif
-
-  // camera init
+  // ----------------------------------------------------------------------------
+  // 4. ENCENDER LA CÁMARA
+  // ----------------------------------------------------------------------------
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x", err);
+    // Si falla aquí: placa mal elegida, cámara mal conectada o falta de energía
+    Serial.printf("Error al iniciar la cámara: 0x%x", err);
     return;
   }
 
-  sensor_t * s = esp_camera_sensor_get();
-  // initial sensors are flipped vertically and colors are a bit saturated
+  // ----------------------------------------------------------------------------
+  // 5. AJUSTES DE IMAGEN DEL SENSOR OV3660
+  // ----------------------------------------------------------------------------
+  // IMPORTANTE para la exposición: estos mismos ajustes se repiten en el sketch
+  // de clasificación (camara_bodega.ino). Si la cámara ve los colores distintos a
+  // como los vio al tomar las fotos de entrenamiento, el modelo se equivoca.
+  sensor_t* s = esp_camera_sensor_get();
   if (s->id.PID == OV3660_PID) {
-    s->set_vflip(s, 1); // flip it back
-    s->set_brightness(s, 1); // up the brightness just a bit
-    s->set_saturation(s, -2); // lower the saturation
+    s->set_vflip(s, 1);        // el sensor viene volteado: se endereza la imagen
+    s->set_brightness(s, 1);   // un poco más de brillo
+    s->set_saturation(s, -2);  // menos saturación (el OV3660 exagera los colores)
   }
-  // drop down frame size for higher initial frame rate
-  if(config.pixel_format == PIXFORMAT_JPEG){
+
+  // Arranca en 320x240 para que el video en vivo sea rápido; desde la página web
+  // se puede cambiar la resolución antes de tomar cada foto.
+  if (config.pixel_format == PIXFORMAT_JPEG) {
     s->set_framesize(s, FRAMESIZE_QVGA);
   }
 
-#if defined(CAMERA_MODEL_M5STACK_WIDE) || defined(CAMERA_MODEL_M5STACK_ESP32CAM)
-  s->set_vflip(s, 1);
-  s->set_hmirror(s, 1);
-#endif
-
-#if defined(CAMERA_MODEL_ESP32S3_EYE)
-  s->set_vflip(s, 1);
-#endif
-
-// Setup LED FLash if LED pin is defined in camera_pins.h
+  // LED flash de la placa (se controla desde la página web)
 #if defined(LED_GPIO_NUM)
   setupLedFlash(LED_GPIO_NUM);
 #endif
 
+  // ----------------------------------------------------------------------------
+  // 6. CONEXIÓN WIFI
+  // ----------------------------------------------------------------------------
   WiFi.begin(ssid, password);
-  WiFi.setSleep(false);
+  WiFi.setSleep(false);   // sin ahorro de energía: el video no se corta
 
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED) {   // espera hasta conectarse
     delay(500);
     Serial.print(".");
   }
   Serial.println("");
-  Serial.println("WiFi connected");
+  Serial.println("WiFi conectado");
 
+  // ----------------------------------------------------------------------------
+  // 7. SERVIDOR WEB
+  // ----------------------------------------------------------------------------
+  // Publica la página de la cámara: /         → página con controles
+  //                                 /stream   → video en vivo
+  //                                 /capture  → una foto JPEG
   startCameraServer();
 
-  Serial.print("Camera Ready! Use 'http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("' to connect");
+  Serial.print("¡Cámara lista! Abre 'http://");
+  Serial.print(WiFi.localIP());   // esta es la IP que se abre en el navegador
+  Serial.println("' en el navegador");
 }
 
 void loop() {
-  // Do nothing. Everything is done in another task by the web server
+  // No hace nada: el servidor web atiende las peticiones en su propia tarea
+  // (FreeRTOS), así que el loop solo espera.
   delay(10000);
 }

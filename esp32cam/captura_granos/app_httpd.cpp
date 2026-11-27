@@ -11,6 +11,16 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+// -----------------------------------------------------------------------------
+// Servidor web de la ESP32-CAM (archivo del ejemplo CameraWebServer, sin cambios
+// en el código; solo se tradujeron los comentarios). Rutas que importan:
+//   /          página con los controles (Start Stream, Get Still, resolución)
+//   /stream    video en vivo para encuadrar el grano
+//   /capture   una foto JPEG: así se tomaron las 120 fotos del dataset
+//   /control   ajustes de la cámara desde la página
+// El código de detección de rostros del ejemplo queda desactivado (no aplica).
+// -----------------------------------------------------------------------------
 #include "esp_http_server.h"
 #include "esp_timer.h"
 #include "esp_camera.h"
@@ -24,11 +34,11 @@
 #include "esp32-hal-log.h"
 #endif
 
-// Face Detection will not work on boards without (or with disabled) PSRAM
+// La detección de rostros no funciona en placas sin PSRAM (o con la PSRAM desactivada)
 #ifdef BOARD_HAS_PSRAM
 #define CONFIG_ESP_FACE_DETECT_ENABLED 1
-// Face Recognition takes upward from 15 seconds per frame on chips other than ESP32S3
-// Makes no sense to have it enabled for them
+// El reconocimiento de rostros tarda más de 15 s por cuadro en chips distintos al ESP32-S3
+// por eso no tiene sentido activarlo en ellos (en este proyecto no se usa)
 #if CONFIG_IDF_TARGET_ESP32S3
 #define CONFIG_ESP_FACE_RECOGNITION_ENABLED 1
 #else
@@ -45,15 +55,15 @@
 #include "human_face_detect_msr01.hpp"
 #include "human_face_detect_mnp01.hpp"
 
-#define TWO_STAGE 1 /*<! 1: detect by two-stage which is more accurate but slower(with keypoints). */
-                    /*<! 0: detect by one-stage which is less accurate but faster(without keypoints). */
+#define TWO_STAGE 1 /*<! 1: detección en dos etapas, más precisa pero más lenta (con puntos clave). */
+                    /*<! 0: detección en una etapa, menos precisa pero más rápida (sin puntos clave). */
 
 #if CONFIG_ESP_FACE_RECOGNITION_ENABLED
 #include "face_recognition_tool.hpp"
 #include "face_recognition_112_v1_s16.hpp"
 #include "face_recognition_112_v1_s8.hpp"
 
-#define QUANT_TYPE 0 //if set to 1 => very large firmware, very slow, reboots when streaming...
+#define QUANT_TYPE 0 // si es 1: firmware muy grande, muy lento y se reinicia al transmitir video
 
 #define FACE_ID_SAVE_NUMBER 7
 #endif
@@ -68,13 +78,13 @@
 #define FACE_COLOR_PURPLE (FACE_COLOR_BLUE | FACE_COLOR_RED)
 #endif
 
-// Enable LED FLASH setting
+// Activa el control del LED flash
 #define CONFIG_LED_ILLUMINATOR_ENABLED 1
 
-// LED FLASH setup
+// Configuración del LED flash
 #if CONFIG_LED_ILLUMINATOR_ENABLED
 
-#define LED_LEDC_CHANNEL 2 //Using different ledc channel/timer than camera
+#define LED_LEDC_CHANNEL 2 // canal/temporizador PWM distinto al de la cámara
 #define CONFIG_LED_MAX_INTENSITY 255
 
 int led_duty = 0;
@@ -112,10 +122,10 @@ static int8_t recognition_enabled = 0;
 static int8_t is_enrolling = 0;
 
 #if QUANT_TYPE
-    // S16 model
+    // modelo S16
     FaceRecognition112V1S16 recognizer;
 #else
-    // S8 model
+    // modelo S8
     FaceRecognition112V1S8 recognizer;
 #endif
 #endif
@@ -124,11 +134,11 @@ static int8_t is_enrolling = 0;
 
 typedef struct
 {
-    size_t size;  //number of values used for filtering
-    size_t index; //current value index
-    size_t count; //value count
+    size_t size;  // cantidad de valores usados para el filtro
+    size_t index; // índice del valor actual
+    size_t count; // cantidad de valores
     int sum;
-    int *values; //array to be filled with values
+    int *values; // arreglo donde se guardan los valores
 } ra_filter_t;
 
 static ra_filter_t ra_filter;
@@ -223,7 +233,7 @@ static void draw_face_boxes(fb_data_t *fb, std::list<dl::detect::result_t> *resu
     int i = 0;
     for (std::list<dl::detect::result_t>::iterator prediction = results->begin(); prediction != results->end(); prediction++, i++)
     {
-        // rectangle box
+        // recuadro alrededor del rostro
         x = (int)prediction->box[0];
         y = (int)prediction->box[1];
         w = (int)prediction->box[2] - x + 1;
@@ -239,7 +249,7 @@ static void draw_face_boxes(fb_data_t *fb, std::list<dl::detect::result_t> *resu
         fb_gfx_drawFastVLine(fb, x, y, h, color);
         fb_gfx_drawFastVLine(fb, x + w - 1, y, h, color);
 #if TWO_STAGE
-        // landmarks (left eye, mouth left, nose, right eye, mouth right)
+        // puntos clave (ojo izq., boca izq., nariz, ojo der., boca der.)
         int x0, y0, j;
         for (j = 0; j < 10; j+=2) {
             x0 = (int)prediction->keypoint[j];
@@ -280,7 +290,7 @@ static int run_face_recognition(fb_data_t *fb, std::list<dl::detect::result_t> *
 
 #if CONFIG_LED_ILLUMINATOR_ENABLED
 void enable_led(bool en)
-{ // Turn LED On or Off
+{ // Enciende o apaga el LED flash
     int duty = en ? led_duty : 0;
     if (en && isStreaming && (led_duty > CONFIG_LED_MAX_INTENSITY))
     {
@@ -293,6 +303,7 @@ void enable_led(bool en)
 }
 #endif
 
+// ===== /bmp : foto sin comprimir (BMP); no se usó en el proyecto =====
 static esp_err_t bmp_handler(httpd_req_t *req)
 {
     camera_fb_t *fb = NULL;
@@ -350,6 +361,8 @@ static size_t jpg_encode_stream(void *arg, size_t index, const void *data, size_
     return len;
 }
 
+// ===== /capture : toma UNA foto JPEG y la envía al navegador =====
+// (con esta ruta / botón "Get Still" se tomaron las fotos del dataset)
 static esp_err_t capture_handler(httpd_req_t *req)
 {
     camera_fb_t *fb = NULL;
@@ -360,8 +373,8 @@ static esp_err_t capture_handler(httpd_req_t *req)
 
 #if CONFIG_LED_ILLUMINATOR_ENABLED
     enable_led(true);
-    vTaskDelay(150 / portTICK_PERIOD_MS); // The LED needs to be turned on ~150ms before the call to esp_camera_fb_get()
-    fb = esp_camera_fb_get();             // or it won't be visible in the frame. A better way to do this is needed.
+    vTaskDelay(150 / portTICK_PERIOD_MS); // el LED debe encenderse ~150 ms antes de llamar a esp_camera_fb_get()
+    fb = esp_camera_fb_get();             // o no se verá en la foto
     enable_led(false);
 #else
     fb = esp_camera_fb_get();
@@ -517,6 +530,7 @@ static esp_err_t capture_handler(httpd_req_t *req)
 #endif
 }
 
+// ===== /stream : video en vivo (MJPEG), usado para encuadrar el grano =====
 static esp_err_t stream_handler(httpd_req_t *req)
 {
     camera_fb_t *fb = NULL;
@@ -816,6 +830,7 @@ static esp_err_t parse_get(httpd_req_t *req, char **obuf)
     return ESP_FAIL;
 }
 
+// ===== /control : cambia ajustes desde la página (resolución, brillo, flash...) =====
 static esp_err_t cmd_handler(httpd_req_t *req)
 {
     char *buf = NULL;
@@ -936,6 +951,7 @@ static int print_reg(char * p, sensor_t * s, uint16_t reg, uint32_t mask){
     return sprintf(p, "\"0x%x\":%u,", reg, s->get_reg(s, reg, mask));
 }
 
+// ===== /status : devuelve los ajustes actuales de la cámara en JSON =====
 static esp_err_t status_handler(httpd_req_t *req)
 {
     static char json_response[1024];
@@ -946,14 +962,14 @@ static esp_err_t status_handler(httpd_req_t *req)
 
     if(s->id.PID == OV5640_PID || s->id.PID == OV3660_PID){
         for(int reg = 0x3400; reg < 0x3406; reg+=2){
-            p+=print_reg(p, s, reg, 0xFFF);//12 bit
+            p+=print_reg(p, s, reg, 0xFFF);// 12 bits
         }
         p+=print_reg(p, s, 0x3406, 0xFF);
 
-        p+=print_reg(p, s, 0x3500, 0xFFFF0);//16 bit
+        p+=print_reg(p, s, 0x3500, 0xFFFF0);// 16 bits
         p+=print_reg(p, s, 0x3503, 0xFF);
-        p+=print_reg(p, s, 0x350a, 0x3FF);//10 bit
-        p+=print_reg(p, s, 0x350c, 0xFFFF);//16 bit
+        p+=print_reg(p, s, 0x350a, 0x3FF);// 10 bits
+        p+=print_reg(p, s, 0x350c, 0xFFFF);// 16 bits
 
         for(int reg = 0x5480; reg <= 0x5490; reg++){
             p+=print_reg(p, s, reg, 0xFF);
@@ -966,7 +982,7 @@ static esp_err_t status_handler(httpd_req_t *req)
         for(int reg = 0x5580; reg < 0x558a; reg++){
             p+=print_reg(p, s, reg, 0xFF);
         }
-        p+=print_reg(p, s, 0x558a, 0x1FF);//9 bit
+        p+=print_reg(p, s, 0x558a, 0x1FF);// 9 bits
     } else if(s->id.PID == OV2640_PID){
         p+=print_reg(p, s, 0xd3, 0xFF);
         p+=print_reg(p, s, 0x111, 0xFF);
@@ -1183,6 +1199,7 @@ static esp_err_t win_handler(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);
 }
 
+// ===== / : entrega la página web de la cámara (guardada en camera_index.h) =====
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
@@ -1202,6 +1219,7 @@ static esp_err_t index_handler(httpd_req_t *req)
     }
 }
 
+// ===== Arranca el servidor web y registra todas las rutas =====
 void startCameraServer()
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -1355,7 +1373,7 @@ void startCameraServer()
 #if CONFIG_ESP_FACE_RECOGNITION_ENABLED
     recognizer.set_partition(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "fr");
 
-    // load ids from flash partition
+    // carga los rostros guardados desde la partición de la flash
     recognizer.set_ids_from_flash();
 #endif
     log_i("Starting web server on port: '%d'", config.server_port);
